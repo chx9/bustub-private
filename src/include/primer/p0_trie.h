@@ -36,7 +36,7 @@ class TrieNode {
    *
    * @param key_char Key character of this trie node
    */
-  explicit TrieNode(char key_char) : key_char_(key_char), is_end_(false) {}
+  explicit TrieNode(char key_char) : key_char_(key_char) {}
 
   /**
    * TODO(P0): Add implementation
@@ -49,9 +49,7 @@ class TrieNode {
   TrieNode(TrieNode &&other_trie_node) noexcept {
     this->is_end_ = other_trie_node.is_end_;
     this->key_char_ = other_trie_node.key_char_;
-    for (auto it = other_trie_node.children_.begin(); it != other_trie_node.children_.end(); it++) {
-      this->children_[it->first] = std::move(it->second);
-    }
+    this->children_ = std::move(other_trie_node.children_);
   }
 
   /**
@@ -206,13 +204,8 @@ class TrieNodeWithValue : public TrieNode {
    * @param trieNode TrieNode whose data is to be moved to TrieNodeWithValue
    * @param value
    */
-  TrieNodeWithValue(TrieNode &&trieNode, T value) {
-    this->is_end_ = trieNode.is_end_;
-    this->key_char_ = trieNode.key_char_;
-    for (auto it = trieNode.children_.begin(); it != trieNode.children_.end(); it++) {
-      this->children_[it->first] = std::move(it->second);
-    }
-    value_ = value;
+  TrieNodeWithValue(TrieNode &&trieNode, T value) : TrieNode(std::move(trieNode)), value_{value} {
+    this->is_end_ = true;
   }
 
   /**
@@ -295,14 +288,13 @@ class Trie {
     //
     latch_.WLock();
     //
-    if (key.size() == 0) {
+    if (key.empty()) {
       latch_.WUnlock();
       return false;
     }
     auto cur = &root_;
     char c;
-    for (std::size_t i = 0; i < key.size(); i++) {
-      c = key[i];
+    for (char c : key) {
       if ((*cur)->HasChild(c)) {
         cur = (*cur)->GetChildNode(c);
       } else {
@@ -313,7 +305,7 @@ class Trie {
         }
       }
     }
-    if (cur == nullptr || (*cur)->IsEndNode() == true) {
+    if (cur == nullptr || (*cur)->IsEndNode()) {
       latch_.WUnlock();
       return false;
     }
@@ -339,14 +331,14 @@ class Trie {
    * @param key Key used to traverse the trie and find correct node
    * @return True if key exists and is removed, false otherwise
    */
-  bool can_remove(const std::string &key, size_t i, std::unique_ptr<TrieNode> *cur, bool *ok) {
+  bool CanRemove(const std::string &key, size_t i, std::unique_ptr<TrieNode> *cur, bool *ok) {
     if (i == key.size()) {
       *ok = (*cur)->IsEndNode();
       (*cur)->SetEndNode(false);
       return (!(*cur)->HasChildren());
     }
 
-    if ((*cur)->HasChild(key[i]) && can_remove(key, i + 1, (*cur)->GetChildNode(key[i]), ok)) {
+    if ((*cur)->HasChild(key[i]) && CanRemove(key, i + 1, (*cur)->GetChildNode(key[i]), ok)) {
       (*cur)->RemoveChildNode(key[i]);
       return (!(*cur)->HasChildren()) && (!(*cur)->IsEndNode());
     }
@@ -359,7 +351,7 @@ class Trie {
       return false;
     }
     bool ok = false;
-    can_remove(key, 0, &root_, &ok);
+    CanRemove(key, 0, &root_, &ok);
     latch_.WUnlock();
     return ok;
   }
@@ -387,14 +379,12 @@ class Trie {
     latch_.RLock();
     *success = false;
     T ret = T();
-    if (key.size() == 0) {
+    if (key.empty()) {
       latch_.RUnlock();
       return ret;
     }
-    char c;
     auto cur = &root_;
-    for (std::size_t i = 0; i < key.size(); i++) {
-      c = key[i];
+    for (char c : key) {
       if ((*cur)->HasChild(c)) {
         cur = (*cur)->GetChildNode(c);
       } else {
