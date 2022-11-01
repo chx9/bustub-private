@@ -253,7 +253,8 @@ class Trie {
    * @brief Construct a new Trie object. Initialize the root node with '\0'
    * character.
    */
-  Trie() { root_ = std::make_unique<TrieNode>('\0'); }
+  Trie() : root_{new TrieNode('\0')} {}
+  // Trie(){ root_ = std::make_unique<TrieNode>('\0'); }
   // Trie() = default;
 
   /**
@@ -292,7 +293,6 @@ class Trie {
       return false;
     }
     auto cur = &root_;
-    char c;
     for (char c : key) {
       if ((*cur)->HasChild(c)) {
         cur = (*cur)->GetChildNode(c);
@@ -308,7 +308,7 @@ class Trie {
       latch_.WUnlock();
       return false;
     }
-    *cur = std::make_unique<TrieNodeWithValue<T>>(c, value);
+    (*cur) = std::make_unique<TrieNodeWithValue<T>>(std::move(**cur), value);
     latch_.WUnlock();
     return true;
   }

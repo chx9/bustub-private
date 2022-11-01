@@ -12,14 +12,15 @@
 
 #pragma once
 
+#include <algorithm>
 #include <limits>
 #include <list>
 #include <mutex>  // NOLINT
 #include <unordered_map>
 #include <vector>
-
 #include "common/config.h"
 #include "common/macros.h"
+#include "common/logger.h"
 
 namespace bustub {
 
@@ -34,6 +35,25 @@ namespace bustub {
  * +inf as its backward k-distance. When multiple frames have +inf backward k-distance,
  * classical LRU algorithm is used to choose victim.
  */
+class FrameInfo {
+ private:
+  size_t k_;
+  frame_id_t frame_id_;
+  std::list<std::size_t> accesses_;
+  bool is_evictable_ = false;
+
+ public:
+  explicit FrameInfo(size_t k = 2, frame_id_t frame_id = 0);
+  auto HasK() -> bool;
+  auto IsEvictable() -> bool;
+  auto SetEvictable(bool set_evictable) -> void;
+  auto PushBack(size_t access) -> void;
+  auto PopFront() -> void;
+  auto GetBack() -> size_t;
+  auto GetSize() -> size_t;
+  auto GetId() -> frame_id_t;
+};
+auto Compare(FrameInfo f1, FrameInfo f2) -> bool;
 class LRUKReplacer {
  public:
   /**
@@ -139,6 +159,7 @@ class LRUKReplacer {
   [[maybe_unused]] size_t curr_size_{0};
   [[maybe_unused]] size_t replacer_size_;
   [[maybe_unused]] size_t k_;
+  std::unordered_map<frame_id_t, FrameInfo> cache_;
   std::mutex latch_;
 };
 

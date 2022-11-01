@@ -137,6 +137,7 @@ TEST(StarterTrieTest, RemoveTest) {
     success = trie.Insert<int>("aa", 6);
     EXPECT_EQ(success, true);
     success = trie.Insert<int>("aaa", 7);
+
     EXPECT_EQ(success, true);
 
     success = trie.Remove("aaa");
