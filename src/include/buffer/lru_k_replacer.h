@@ -18,6 +18,7 @@
 #include <mutex>  // NOLINT
 #include <unordered_map>
 #include <vector>
+#include <queue>
 #include "common/config.h"
 #include "common/logger.h"
 #include "common/macros.h"
@@ -48,12 +49,17 @@ class FrameInfo {
   auto IsEvictable() -> bool;
   auto SetEvictable(bool set_evictable) -> void;
   auto PushBack(size_t access) -> void;
+  auto GetFront() -> size_t;
   auto PopFront() -> void;
   auto GetBack() -> size_t;
   auto GetSize() -> size_t;
   auto GetId() -> frame_id_t;
 };
-auto Compare(FrameInfo *f1, FrameInfo *f2) -> bool;
+// auto Compare(FrameInfo *f1, FrameInfo *f2) -> bool;
+class Compare{
+public:
+  auto operator()(FrameInfo* f1, FrameInfo* f2) -> bool;
+};
 class LRUKReplacer {
  public:
   /**
