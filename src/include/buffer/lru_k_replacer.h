@@ -19,8 +19,8 @@
 #include <unordered_map>
 #include <vector>
 #include "common/config.h"
-#include "common/macros.h"
 #include "common/logger.h"
+#include "common/macros.h"
 
 namespace bustub {
 
@@ -53,7 +53,7 @@ class FrameInfo {
   auto GetSize() -> size_t;
   auto GetId() -> frame_id_t;
 };
-auto Compare(FrameInfo f1, FrameInfo f2) -> bool;
+auto Compare(FrameInfo *f1, FrameInfo *f2) -> bool;
 class LRUKReplacer {
  public:
   /**
