@@ -13,8 +13,8 @@
 #include "buffer/buffer_pool_manager_instance.h"
 
 #include "common/exception.h"
+#include "common/logger.h"
 #include "common/macros.h"
-
 namespace bustub {
 
 BufferPoolManagerInstance::BufferPoolManagerInstance(size_t pool_size, DiskManager *disk_manager, size_t replacer_k,
@@ -97,66 +97,62 @@ auto BufferPoolManagerInstance::NewPgImp(page_id_t *page_id) -> Page * {
   return nullptr;
 }
 
-auto BufferPoolManagerInstance::FetchPgImp(page_id_t page_id) -> Page * { 
-    frame_id_t frame_id;
-    bool success = page_table_->Find(page_id, frame_id);
-    if(success){
-      return &pages_[frame_id];
+auto BufferPoolManagerInstance::FetchPgImp(page_id_t page_id) -> Page * {
+  frame_id_t frame_id;
+  bool success = page_table_->Find(page_id, frame_id);
+  if (success) {
+    return &pages_[frame_id];
+  }
+  // LOG_INFO("not success");
+  // from free list
+  if (!free_list_.empty()) {
+    frame_id = free_list_.back();
+    free_list_.pop_back();
+
+    // replacer
+    replacer_->RecordAccess(frame_id);
+    replacer_->SetEvictable(frame_id, false);
+
+    // page_table
+    page_table_->Insert(page_id, frame_id);
+
+    // reset meta data
+    pages_[frame_id].ResetMemory();
+
+    // read and copy data
+    disk_manager_->ReadPage(page_id, pages_[frame_id].data_);
+    pages_[frame_id].pin_count_++;
+    pages_[frame_id].page_id_ = page_id;
+
+    return &pages_[frame_id];
+  }
+  success = replacer_->Evict(&frame_id);
+  if (success) {
+    LOG_INFO("replacer1");
+    page_id_t evict_page_id = pages_[frame_id].GetPageId();
+    if (pages_[frame_id].is_dirty_) {
+      // if has a dirty page, write it back to the disk
+      FlushPgImp(evict_page_id);
     }
+    // reset the memory and meta data for the new page
+    // pages_[frame_id].ResetMemory();
+    // page_table
+    page_table_->Remove(evict_page_id);
+    // replacer
+    replacer_->Remove(frame_id);
 
-    // from free list 
-    if(!free_list_.empty()){
-      frame_id = free_list_.back();
-      free_list_.pop_back();
+    replacer_->RecordAccess(frame_id);
+    replacer_->SetEvictable(frame_id, false);
+    page_table_->Insert(page_id, frame_id);
+    pages_[frame_id].page_id_ = page_id;
+    pages_[frame_id].pin_count_++;
 
-      // replacer
-      replacer_->RecordAccess(frame_id);
-      replacer_->SetEvictable(frame_id, false);
-
-      // page_table
-      page_table_->Insert(page_id, frame_id);
-
-      // reset meta data
-      pages_[frame_id].ResetMemory();
-
-      // read and copy data
-      char* page_data = nullptr;
-      disk_manager_->ReadPage(page_id, page_data);
-      memcpy(pages_[frame_id].data_, page_data, BUSTUB_PAGE_SIZE);
-
-      pages_[frame_id].pin_count_++;
-      pages_[frame_id].page_id_ = page_id;
-
-      return &pages_[frame_id];
-    }
-    success = replacer_->Evict(&frame_id);
-    if(success){
-      page_id_t evict_page_id = pages_[frame_id].GetPageId();
-      if(pages_[frame_id].is_dirty_){
-        // if has a dirty page, write it back to the disk
-        FlushPgImp(evict_page_id);
-      }
-      // reset the memory and meta data for the new page
-      pages_[frame_id].ResetMemory();
-      // page_table
-      page_table_->Remove(evict_page_id);
-      // replacer
-      replacer_->Remove(frame_id);
-
-      replacer_->RecordAccess(frame_id);
-      replacer_->SetEvictable(frame_id, false);
-      page_table_->Insert(page_id, frame_id);
-      pages_[frame_id].page_id_ = page_id;
-      pages_[frame_id].pin_count_++;
-
-      // read and copy data
-      char* page_data = nullptr;
-      disk_manager_->ReadPage(page_id, page_data);
-      memcpy(pages_[frame_id].data_, page_data, BUSTUB_PAGE_SIZE);
-      return &pages_[frame_id];
-    }
-    return nullptr;
- }
+    // read and copy data
+    disk_manager_->ReadPage(page_id, pages_[frame_id].data_);
+    return &pages_[frame_id];
+  }
+  return nullptr;
+}
 
 auto BufferPoolManagerInstance::UnpinPgImp(page_id_t page_id, bool is_dirty) -> bool {
   frame_id_t frame_id;
@@ -169,7 +165,8 @@ auto BufferPoolManagerInstance::UnpinPgImp(page_id_t page_id, bool is_dirty) -> 
   pages_[frame_id].pin_count_--;
   // If the pin count reaches 0, the frame should be evictable by the replacer.
   if (pages_[frame_id].pin_count_ == 0) {
-    replacer_->Evict(&frame_id);
+    pages_[frame_id].is_dirty_ = false;
+    replacer_->SetEvictable(frame_id, true);
   }
   // Also, set the dirty flag on the page to indicate if the page was modified.
   pages_[frame_id].is_dirty_ = true;
