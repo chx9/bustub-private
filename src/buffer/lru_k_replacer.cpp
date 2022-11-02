@@ -22,25 +22,25 @@ auto FrameInfo::PopFront() -> void { accesses_.pop_front(); }
 auto FrameInfo::PushBack(size_t access) -> void { accesses_.push_back(access); }
 auto FrameInfo::GetSize() -> size_t { return accesses_.size(); }
 auto FrameInfo::GetId() -> frame_id_t { return frame_id_; }
-auto FrameInfo::GetFront() -> size_t { return accesses_.front();}
+auto FrameInfo::GetFront() -> size_t { return accesses_.front(); }
 LRUKReplacer::LRUKReplacer(size_t num_frames, size_t k) : replacer_size_{num_frames}, k_(k) {}
 auto LRUKReplacer::Evict(frame_id_t *frame_id) -> bool {
   if (curr_size_ == 0) {
     return false;
-  };
-  std::priority_queue<FrameInfo*, std::vector<FrameInfo*>, Compare> k_evictables;
-  std::priority_queue<FrameInfo*, std::vector<FrameInfo*>, Compare> none_k_evitables;
-  for(auto &it: cache_){
+  }
+  std::priority_queue<FrameInfo *, std::vector<FrameInfo *>, Compare> k_evictables;
+  std::priority_queue<FrameInfo *, std::vector<FrameInfo *>, Compare> none_k_evitables;
+  for (auto &it : cache_) {
     if (!it.second.IsEvictable()) {
       continue;
     }
-    if(it.second.HasK()){
+    if (it.second.HasK()) {
       k_evictables.push(&it.second);
-    }else{
+    } else {
       none_k_evitables.push(&it.second);
     }
   }
-  if(!none_k_evitables.empty()){
+  if (!none_k_evitables.empty()) {
     auto id = none_k_evitables.top()->GetId();
     *frame_id = id;
     cache_.erase(id);
@@ -55,7 +55,7 @@ auto LRUKReplacer::Evict(frame_id_t *frame_id) -> bool {
 }
 
 void LRUKReplacer::RecordAccess(frame_id_t frame_id) {
-  BUSTUB_ASSERT(frame_id <= (int)replacer_size_, "invalid frame_id");
+  BUSTUB_ASSERT(size_t(frame_id) <= replacer_size_, "invalid frame id");
   if (cache_.find(frame_id) == cache_.end()) {
     cache_[frame_id] = FrameInfo(k_, frame_id);
   }
@@ -68,21 +68,24 @@ void LRUKReplacer::RecordAccess(frame_id_t frame_id) {
 }
 
 void LRUKReplacer::SetEvictable(frame_id_t frame_id, bool set_evictable) {
-  BUSTUB_ASSERT(frame_id <= (int)replacer_size_, "invalid frame_id");
-  bool before = cache_[frame_id].IsEvictable();
+  BUSTUB_ASSERT(size_t(frame_id) <= replacer_size_, "invalid frame id");
+  auto it = cache_.find(frame_id);
+  if (it == cache_.end()) {
+    return;
+  }
+  bool before = it->second.IsEvictable();
   if (!before && set_evictable) {
     curr_size_++;
   } else if (before && !set_evictable) {
     curr_size_--;
   }
-  cache_[frame_id].SetEvictable(set_evictable);
+  it->second.SetEvictable(set_evictable);
 }
 
 void LRUKReplacer::Remove(frame_id_t frame_id) {
   auto it = cache_.find(frame_id);
   if (it != cache_.end()) {
-    BUSTUB_ASSERT(!it->second.IsEvictable(),
-                "Remove is called on a non-evictable frame");
+    BUSTUB_ASSERT(!it->second.IsEvictable(), "Remove is called on a non-evictable frame");
     cache_.erase(it);
     curr_size_--;
   }
@@ -91,5 +94,5 @@ void LRUKReplacer::Remove(frame_id_t frame_id) {
 auto LRUKReplacer::Size() -> size_t { return curr_size_; }
 
 // auto Compare(FrameInfo *f1, FrameInfo *f2) -> bool { return f1->GetBack() < f2->GetBack(); }
-auto Compare::operator()(FrameInfo* f1, FrameInfo* f2) -> bool {return f1->GetFront() > f2->GetFront();}
+auto Compare::operator()(FrameInfo *f1, FrameInfo *f2) -> bool { return f1->GetFront() > f2->GetFront(); }
 }  // namespace bustub

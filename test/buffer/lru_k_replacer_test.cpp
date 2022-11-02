@@ -51,10 +51,10 @@ TEST(LRUKReplacerTest, SampleTest) {
   // Scenario: Now replacer has frames [5,1].
 
   // Insert new frames 3, 4, and update access history for 5. We should end with [3,1,5,4]
-  lru_replacer.RecordAccess(3);  //[3,5,1]
-  lru_replacer.RecordAccess(4);  //[4,3,5,1]
-  lru_replacer.RecordAccess(5);  //[4,3,1,5]
-  lru_replacer.RecordAccess(4);  //[3,1,5,4]
+  lru_replacer.RecordAccess(3);
+  lru_replacer.RecordAccess(4);
+  lru_replacer.RecordAccess(5);
+  lru_replacer.RecordAccess(4);
   lru_replacer.SetEvictable(3, true);
   lru_replacer.SetEvictable(4, true);
   ASSERT_EQ(4, lru_replacer.Size());

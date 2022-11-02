@@ -16,9 +16,9 @@
 #include <limits>
 #include <list>
 #include <mutex>  // NOLINT
+#include <queue>
 #include <unordered_map>
 #include <vector>
-#include <queue>
 #include "common/config.h"
 #include "common/logger.h"
 #include "common/macros.h"
@@ -56,9 +56,9 @@ class FrameInfo {
   auto GetId() -> frame_id_t;
 };
 // auto Compare(FrameInfo *f1, FrameInfo *f2) -> bool;
-class Compare{
-public:
-  auto operator()(FrameInfo* f1, FrameInfo* f2) -> bool;
+class Compare {
+ public:
+  auto operator()(FrameInfo *f1, FrameInfo *f2) -> bool;
 };
 class LRUKReplacer {
  public:
