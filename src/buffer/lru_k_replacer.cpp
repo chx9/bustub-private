@@ -85,7 +85,7 @@ void LRUKReplacer::SetEvictable(frame_id_t frame_id, bool set_evictable) {
 void LRUKReplacer::Remove(frame_id_t frame_id) {
   auto it = cache_.find(frame_id);
   if (it != cache_.end()) {
-    BUSTUB_ASSERT(!it->second.IsEvictable(), "Remove is called on a non-evictable frame");
+    BUSTUB_ASSERT(it->second.IsEvictable(), "Remove is called on a non-evictable frame");
     cache_.erase(it);
     curr_size_--;
   }

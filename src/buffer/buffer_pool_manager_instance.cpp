@@ -144,10 +144,12 @@ auto BufferPoolManagerInstance::FetchPgImp(page_id_t page_id) -> Page * {
     replacer_->RecordAccess(frame_id);
     replacer_->SetEvictable(frame_id, false);
     page_table_->Insert(page_id, frame_id);
+
     pages_[frame_id].page_id_ = page_id;
     pages_[frame_id].pin_count_++;
 
     // read and copy data
+    pages_[frame_id].ResetMemory();
     disk_manager_->ReadPage(page_id, pages_[frame_id].data_);
     return &pages_[frame_id];
   }
@@ -158,18 +160,17 @@ auto BufferPoolManagerInstance::UnpinPgImp(page_id_t page_id, bool is_dirty) -> 
   frame_id_t frame_id;
   bool success = page_table_->Find(page_id, frame_id);
   // If page_id is not in the buffer pool or its pin count is already 0, return false
-  if (!success || pages_[frame_id].pin_count_ == 0) {
+  if (!success || pages_[frame_id].pin_count_ <= 0) {
     return false;
   }
   // Decrement the pin count of a page.
   pages_[frame_id].pin_count_--;
   // If the pin count reaches 0, the frame should be evictable by the replacer.
   if (pages_[frame_id].pin_count_ == 0) {
-    pages_[frame_id].is_dirty_ = false;
     replacer_->SetEvictable(frame_id, true);
+    // Also, set the dirty flag on the page to indicate if the page was modified.
+    pages_[frame_id].is_dirty_ = is_dirty;
   }
-  // Also, set the dirty flag on the page to indicate if the page was modified.
-  pages_[frame_id].is_dirty_ = true;
   return true;
 }
 
@@ -209,6 +210,7 @@ auto BufferPoolManagerInstance::DeletePgImp(page_id_t page_id) -> bool {
   if (pages_[frame_id].pin_count_ > 0) {
     return false;
   }
+  pages_[frame_id].ResetMemory();
   // delete from the page table;
   page_table_->Remove(page_id);
   // stop tracking the frame in the replacer
