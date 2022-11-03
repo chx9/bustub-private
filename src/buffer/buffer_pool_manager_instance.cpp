@@ -60,6 +60,9 @@ auto BufferPoolManagerInstance::NewPgImp(page_id_t *page_id) -> Page * {
     page_table_->Insert(new_page_id, frame_id);
     // reset set meta data
     pages_[frame_id].ResetMemory();
+    pages_[frame_id].pin_count_ = 0;
+    pages_[frame_id].is_dirty_ = false;
+
     pages_[frame_id].pin_count_++;
     pages_[frame_id].page_id_ = new_page_id;
     return &pages_[frame_id];
@@ -101,9 +104,11 @@ auto BufferPoolManagerInstance::FetchPgImp(page_id_t page_id) -> Page * {
   frame_id_t frame_id;
   bool success = page_table_->Find(page_id, frame_id);
   if (success) {
+    pages_[frame_id].pin_count_++;
+    replacer_->RecordAccess(frame_id);
+    replacer_->SetEvictable(frame_id, false);
     return &pages_[frame_id];
   }
-  // LOG_INFO("not success");
   // from free list
   if (!free_list_.empty()) {
     frame_id = free_list_.back();
@@ -121,14 +126,13 @@ auto BufferPoolManagerInstance::FetchPgImp(page_id_t page_id) -> Page * {
 
     // read and copy data
     disk_manager_->ReadPage(page_id, pages_[frame_id].data_);
-    pages_[frame_id].pin_count_++;
+    pages_[frame_id].pin_count_ = 1;
     pages_[frame_id].page_id_ = page_id;
 
     return &pages_[frame_id];
   }
   success = replacer_->Evict(&frame_id);
   if (success) {
-    LOG_INFO("replacer1");
     page_id_t evict_page_id = pages_[frame_id].GetPageId();
     if (pages_[frame_id].is_dirty_) {
       // if has a dirty page, write it back to the disk
@@ -146,7 +150,7 @@ auto BufferPoolManagerInstance::FetchPgImp(page_id_t page_id) -> Page * {
     page_table_->Insert(page_id, frame_id);
 
     pages_[frame_id].page_id_ = page_id;
-    pages_[frame_id].pin_count_++;
+    pages_[frame_id].pin_count_ = 1;
 
     // read and copy data
     pages_[frame_id].ResetMemory();
@@ -169,7 +173,10 @@ auto BufferPoolManagerInstance::UnpinPgImp(page_id_t page_id, bool is_dirty) -> 
   if (pages_[frame_id].pin_count_ == 0) {
     replacer_->SetEvictable(frame_id, true);
     // Also, set the dirty flag on the page to indicate if the page was modified.
-    pages_[frame_id].is_dirty_ = is_dirty;
+    // pages_[frame_id].is_dirty_ = is_dirty;
+    if (is_dirty) {
+      pages_[frame_id].is_dirty_ = true;
+    }
   }
   return true;
 }
@@ -207,10 +214,18 @@ auto BufferPoolManagerInstance::DeletePgImp(page_id_t page_id) -> bool {
     return true;
   }
   // If the page is pinned and cannot be deleted, return false immediately
-  if (pages_[frame_id].pin_count_ > 0) {
+  if (pages_[frame_id].pin_count_ != 0) {
     return false;
   }
+  if (pages_[frame_id].is_dirty_) {
+    disk_manager_->WritePage(frame_id, pages_[frame_id].data_);
+  }
   pages_[frame_id].ResetMemory();
+  // delete pages_[frame_id].data_;
+  pages_[frame_id].page_id_ = INVALID_PAGE_ID;
+  pages_[frame_id].pin_count_ = 0;
+  pages_[frame_id].is_dirty_ = false;
+
   // delete from the page table;
   page_table_->Remove(page_id);
   // stop tracking the frame in the replacer
