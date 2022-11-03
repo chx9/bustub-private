@@ -22,7 +22,7 @@
 #include <mutex>  // NOLINT
 #include <utility>
 #include <vector>
-
+#include "common/rwlatch.h"
 #include "container/hash/hash_table.h"
 
 namespace bustub {
@@ -162,7 +162,7 @@ class ExtendibleHashTable : public HashTable<K, V> {
     size_t size_;
     int depth_;
     std::list<std::pair<K, V>> list_;
-    mutable std::mutex latch_;
+    ReaderWriterLatch rw_latch_;
   };
 
  private:
@@ -173,7 +173,7 @@ class ExtendibleHashTable : public HashTable<K, V> {
   size_t bucket_size_;  // The size of a bucket
   int num_buckets_;     // The number of buckets in the hash table
   mutable std::mutex latch_;
-  mutable std::mutex latch_insert_;
+  ReaderWriterLatch rw_latch_;
   std::vector<std::shared_ptr<Bucket>> dir_;  // The directory of the hash table
 
   // The following functions are completely optional, you can delete them if you have your own ideas.

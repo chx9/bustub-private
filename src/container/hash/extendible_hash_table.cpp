@@ -69,21 +69,28 @@ auto ExtendibleHashTable<K, V>::GetNumBucketsInternal() const -> int {
 
 template <typename K, typename V>
 auto ExtendibleHashTable<K, V>::Find(const K &key, V &value) -> bool {
+  rw_latch_.RLock();
   size_t index = IndexOf(key);
-  return dir_[index]->Find(key, value);
+  bool success = dir_[index]->Find(key, value);
+  rw_latch_.RUnlock();
+  return success;
 }
 
 template <typename K, typename V>
 auto ExtendibleHashTable<K, V>::Remove(const K &key) -> bool {
+  rw_latch_.RLock();
   size_t index = IndexOf(key);
-  return dir_[index]->Remove(key);
+  bool success = dir_[index]->Remove(key);
+  rw_latch_.RUnlock();
+  return success;
 }
 
 template <typename K, typename V>
 void ExtendibleHashTable<K, V>::Insert(const K &key, const V &value) {
   // UNREACHABLE("not implemented");
+  rw_latch_.WLock();
   size_t index = IndexOf(key);
-  if (!(dir_[index]->Insert(key, value))) {
+  while (!(dir_[index]->Insert(key, value))) {
     if (GetLocalDepth(index) == GetGlobalDepth()) {
       // 1.1. If the local depth of the bucket is equal to the global depth,
       // increment the global depth
@@ -123,8 +130,9 @@ void ExtendibleHashTable<K, V>::Insert(const K &key, const V &value) {
       }
     }
     num_buckets_++;
-    Insert(key, value);
+    index = IndexOf(key);
   }
+  rw_latch_.WUnlock();
 }
 
 //===--------------------------------------------------------------------===//
@@ -135,44 +143,54 @@ ExtendibleHashTable<K, V>::Bucket::Bucket(size_t array_size, int depth) : size_(
 
 template <typename K, typename V>
 auto ExtendibleHashTable<K, V>::Bucket::Find(const K &key, V &value) -> bool {
+  rw_latch_.RLock();
   auto it = list_.begin();
   while (it != list_.end() && it->first != key) {
     it++;
   }
   if (it != list_.end()) {
     value = it->second;
+    rw_latch_.RUnlock();
     return true;
   }
+  rw_latch_.RUnlock();
   return false;
 }
 
 template <typename K, typename V>
 auto ExtendibleHashTable<K, V>::Bucket::Remove(const K &key) -> bool {
+  rw_latch_.WLock();
   auto it = list_.begin();
   while (it != list_.end() && it->first != key) {
     it++;
   }
   if (it == list_.end()) {
+    rw_latch_.WUnlock();
     return false;
   }
   list_.erase(it);
+  rw_latch_.WUnlock();
   return true;
 }
 
 template <typename K, typename V>
 auto ExtendibleHashTable<K, V>::Bucket::Insert(const K &key, const V &value) -> bool {
+  rw_latch_.WLock();
   auto it = list_.begin();
   while (it != list_.end() && it->first != key) {
     it++;
   }
   if (it != list_.end()) {
     it->second = value;
+    rw_latch_.WUnlock();
     return true;
   }
   if (IsFull()) {
+    rw_latch_.WUnlock();
     return false;
   }
   list_.emplace_back(std::make_pair(key, value));
+  rw_latch_.WUnlock();
   return true;
 }
 

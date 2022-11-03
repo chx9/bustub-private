@@ -22,7 +22,7 @@
 #include "common/config.h"
 #include "common/logger.h"
 #include "common/macros.h"
-
+#include "common/rwlatch.h"
 namespace bustub {
 
 /**
@@ -167,6 +167,7 @@ class LRUKReplacer {
   [[maybe_unused]] size_t k_;
   std::unordered_map<frame_id_t, FrameInfo> cache_;
   std::mutex latch_;
+  ReaderWriterLatch rw_latch_;
 };
 
 }  // namespace bustub

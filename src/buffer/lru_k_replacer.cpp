@@ -25,7 +25,9 @@ auto FrameInfo::GetId() -> frame_id_t { return frame_id_; }
 auto FrameInfo::GetFront() -> size_t { return accesses_.front(); }
 LRUKReplacer::LRUKReplacer(size_t num_frames, size_t k) : replacer_size_{num_frames}, k_(k) {}
 auto LRUKReplacer::Evict(frame_id_t *frame_id) -> bool {
+  rw_latch_.WLock();
   if (curr_size_ == 0) {
+    rw_latch_.WUnlock();
     return false;
   }
   std::priority_queue<FrameInfo *, std::vector<FrameInfo *>, Compare> k_evictables;
@@ -45,16 +47,19 @@ auto LRUKReplacer::Evict(frame_id_t *frame_id) -> bool {
     *frame_id = id;
     cache_.erase(id);
     curr_size_--;
+    rw_latch_.WUnlock();
     return true;
   }
   auto id = k_evictables.top()->GetId();
   *frame_id = id;
   cache_.erase(id);
   curr_size_--;
+  rw_latch_.WUnlock();
   return true;
 }
 
 void LRUKReplacer::RecordAccess(frame_id_t frame_id) {
+  rw_latch_.WLock();
   BUSTUB_ASSERT(size_t(frame_id) <= replacer_size_, "invalid frame id");
   if (cache_.find(frame_id) == cache_.end()) {
     cache_[frame_id] = FrameInfo(k_, frame_id);
@@ -65,12 +70,15 @@ void LRUKReplacer::RecordAccess(frame_id_t frame_id) {
   if (frame_info.GetSize() > k_) {
     frame_info.PopFront();
   }
+  rw_latch_.WUnlock();
 }
 
 void LRUKReplacer::SetEvictable(frame_id_t frame_id, bool set_evictable) {
+  rw_latch_.WLock();
   BUSTUB_ASSERT(size_t(frame_id) <= replacer_size_, "invalid frame id");
   auto it = cache_.find(frame_id);
   if (it == cache_.end()) {
+    rw_latch_.WUnlock();
     return;
   }
   bool before = it->second.IsEvictable();
@@ -80,15 +88,18 @@ void LRUKReplacer::SetEvictable(frame_id_t frame_id, bool set_evictable) {
     curr_size_--;
   }
   it->second.SetEvictable(set_evictable);
+  rw_latch_.WUnlock();
 }
 
 void LRUKReplacer::Remove(frame_id_t frame_id) {
+  rw_latch_.WLock();
   auto it = cache_.find(frame_id);
   if (it != cache_.end()) {
     BUSTUB_ASSERT(it->second.IsEvictable(), "Remove is called on a non-evictable frame");
     cache_.erase(it);
     curr_size_--;
   }
+  rw_latch_.WUnlock();
 }
 
 auto LRUKReplacer::Size() -> size_t { return curr_size_; }

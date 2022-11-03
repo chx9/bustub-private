@@ -43,6 +43,7 @@ BufferPoolManagerInstance::~BufferPoolManagerInstance() {
 }
 
 auto BufferPoolManagerInstance::NewPgImp(page_id_t *page_id) -> Page * {
+  rw_latch_.WLock();
   frame_id_t frame_id;
   if (!free_list_.empty()) {
     // from free list, always find from the free list first
@@ -65,6 +66,7 @@ auto BufferPoolManagerInstance::NewPgImp(page_id_t *page_id) -> Page * {
 
     pages_[frame_id].pin_count_++;
     pages_[frame_id].page_id_ = new_page_id;
+    rw_latch_.WUnlock();
     return &pages_[frame_id];
   }
 
@@ -93,10 +95,12 @@ auto BufferPoolManagerInstance::NewPgImp(page_id_t *page_id) -> Page * {
     pages_[frame_id].pin_count_++;
 
     *page_id = new_page_id;
+    rw_latch_.WUnlock();
     return &pages_[frame_id];
   }
   // set page_id to null if all frames currently in use and not evictable
   page_id = nullptr;
+  rw_latch_.WUnlock();
   return nullptr;
 }
 
@@ -128,7 +132,6 @@ auto BufferPoolManagerInstance::FetchPgImp(page_id_t page_id) -> Page * {
     disk_manager_->ReadPage(page_id, pages_[frame_id].data_);
     pages_[frame_id].pin_count_ = 1;
     pages_[frame_id].page_id_ = page_id;
-
     return &pages_[frame_id];
   }
   success = replacer_->Evict(&frame_id);
@@ -182,30 +185,45 @@ auto BufferPoolManagerInstance::UnpinPgImp(page_id_t page_id, bool is_dirty) -> 
 }
 
 auto BufferPoolManagerInstance::FlushPgImp(page_id_t page_id) -> bool {
+  rw_latch_.WLock();
   if (page_id == INVALID_PAGE_ID) {
+    rw_latch_.WUnlock();
     return false;
   }
   frame_id_t frame_id;
-  bool success = page_table_->Find(page_id, frame_id);
-  if (!success) {
-    return false;
+  if (page_table_->Find(page_id, frame_id)) {
+    disk_manager_->WritePage(page_id, pages_[frame_id].GetData());
+    pages_[frame_id].is_dirty_ = false;
+    rw_latch_.WUnlock();
+    return true;
   }
-  // Use the DiskManager::WritePage() method to flush a page to disk, REGARDLESS of the dirty flag.
-  disk_manager_->WritePage(page_id, pages_[frame_id].GetData());
-  // Unset the dirty flag of the page after flushing.
-  pages_[frame_id].is_dirty_ = false;
-  return true;
+  rw_latch_.WUnlock();
+  return false;
 }
 
 void BufferPoolManagerInstance::FlushAllPgsImp() {
+  rw_latch_.WLock();
   for (size_t i = 0; i < pool_size_; i++) {
-    if (pages_[i].page_id_ == INVALID_PAGE_ID) {
-      continue;
+    if (pages_[i].GetPageId() != INVALID_PAGE_ID) {
+      disk_manager_->WritePage(pages_[i].GetPageId(), pages_[i].GetData());
+      pages_[i].is_dirty_ = false;
     }
-    FlushPgImp(pages_[i].page_id_);
   }
+  rw_latch_.WUnlock();
 }
-
+/**
+ * TODO(P1): Add implementation
+ *
+ * @brief Delete a page from the buffer pool. If page_id is not in the buffer pool, do nothing and return true. If the
+ * page is pinned and cannot be deleted, return false immediately.
+ *
+ * After deleting the page from the page table, stop tracking the frame in the replacer and add the frame
+ * back to the free list. Also, reset the page's memory and metadata. Finally, you should call DeallocatePage() to
+ * imitate freeing the page on the disk.
+ *
+ * @param page_id id of page to be deleted
+ * @return false if the page exists but could not be deleted, true if the page didn't exist or deletion succeeded
+ */
 auto BufferPoolManagerInstance::DeletePgImp(page_id_t page_id) -> bool {
   frame_id_t frame_id;
   bool success = page_table_->Find(page_id, frame_id);
@@ -216,9 +234,6 @@ auto BufferPoolManagerInstance::DeletePgImp(page_id_t page_id) -> bool {
   // If the page is pinned and cannot be deleted, return false immediately
   if (pages_[frame_id].pin_count_ != 0) {
     return false;
-  }
-  if (pages_[frame_id].is_dirty_) {
-    disk_manager_->WritePage(frame_id, pages_[frame_id].data_);
   }
   pages_[frame_id].ResetMemory();
   // delete pages_[frame_id].data_;
