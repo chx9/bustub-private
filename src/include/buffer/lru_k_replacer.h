@@ -12,16 +12,17 @@
 
 #pragma once
 
+#include <algorithm>
 #include <limits>
 #include <list>
 #include <mutex>  // NOLINT
+#include <queue>
 #include <unordered_map>
 #include <vector>
-
 #include "common/config.h"
+#include "common/logger.h"
 #include "common/macros.h"
 #include "common/rwlatch.h"
-
 namespace bustub {
 
 /**
@@ -35,6 +36,30 @@ namespace bustub {
  * +inf as its backward k-distance. When multiple frames have +inf backward k-distance,
  * classical LRU algorithm is used to choose victim.
  */
+class FrameInfo {
+ private:
+  size_t k_;
+  frame_id_t frame_id_;
+  std::list<std::size_t> accesses_;
+  bool is_evictable_ = false;
+
+ public:
+  explicit FrameInfo(size_t k = 2, frame_id_t frame_id = 0);
+  auto HasK() -> bool;
+  auto IsEvictable() -> bool;
+  auto SetEvictable(bool set_evictable) -> void;
+  auto PushBack(size_t access) -> void;
+  auto GetFront() -> size_t;
+  auto PopFront() -> void;
+  auto GetBack() -> size_t;
+  auto GetSize() -> size_t;
+  auto GetId() -> frame_id_t;
+};
+// auto Compare(FrameInfo *f1, FrameInfo *f2) -> bool;
+class Compare {
+ public:
+  auto operator()(FrameInfo *f1, FrameInfo *f2) -> bool;
+};
 class LRUKReplacer {
  public:
   /**
@@ -136,15 +161,13 @@ class LRUKReplacer {
  private:
   // TODO(student): implement me! You can replace these member variables as you like.
   // Remove maybe_unused if you start using them.
-  size_t current_timestamp_{0};
-  size_t curr_size_{0};
-  size_t replacer_size_;
-  size_t k_;
+  [[maybe_unused]] size_t current_timestamp_{0};
+  [[maybe_unused]] size_t curr_size_{0};
+  [[maybe_unused]] size_t replacer_size_;
+  [[maybe_unused]] size_t k_;
+  std::unordered_map<frame_id_t, FrameInfo> cache_;
   std::mutex latch_;
-  ReaderWriterLatch rwlatch_;
-
-  std::unordered_map<frame_id_t, std::list<size_t>> non_evictable_frame_;
-  std::unordered_map<frame_id_t, std::list<size_t>> evictable_frame_;
+  ReaderWriterLatch rw_latch_;
 };
 
 }  // namespace bustub
