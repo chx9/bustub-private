@@ -26,9 +26,9 @@ auto FrameInfo::GetFront() -> size_t { return accesses_.front(); }
 LRUKReplacer::LRUKReplacer(size_t num_frames, size_t k) : replacer_size_{num_frames}, k_(k) {}
 
 auto LRUKReplacer::Evict(frame_id_t *frame_id) -> bool {
-  rw_latch_.WLock();
+  latch_.lock();
   if (curr_size_ == 0) {
-    rw_latch_.WUnlock();
+    latch_.unlock();
     return false;
   }
   auto k_it_evict = cache_.end();
@@ -54,22 +54,22 @@ auto LRUKReplacer::Evict(frame_id_t *frame_id) -> bool {
     *frame_id = none_k_it_evict->first;
     cache_.erase(none_k_it_evict);
     curr_size_--;
-    rw_latch_.WUnlock();
+    latch_.unlock();
     return true;
   }
   if (k_it_evict != cache_.end()) {
     *frame_id = k_it_evict->first;
     cache_.erase(k_it_evict);
     curr_size_--;
-    rw_latch_.WUnlock();
+    latch_.unlock();
     return true;
   }
-  rw_latch_.WUnlock();
+  latch_.unlock();
   return false;
 }
 
 void LRUKReplacer::RecordAccess(frame_id_t frame_id) {
-  rw_latch_.WLock();
+  latch_.lock();
   BUSTUB_ASSERT(size_t(frame_id) <= replacer_size_, "invalid frame id");
   if (cache_.find(frame_id) == cache_.end()) {
     cache_[frame_id] = FrameInfo(k_, frame_id);
@@ -80,15 +80,15 @@ void LRUKReplacer::RecordAccess(frame_id_t frame_id) {
   if (frame_info.GetSize() > k_) {
     frame_info.PopFront();
   }
-  rw_latch_.WUnlock();
+  latch_.unlock();
 }
 
 void LRUKReplacer::SetEvictable(frame_id_t frame_id, bool set_evictable) {
-  rw_latch_.WLock();
+  latch_.lock();
   BUSTUB_ASSERT(size_t(frame_id) <= replacer_size_, "invalid frame id");
   auto it = cache_.find(frame_id);
   if (it == cache_.end()) {
-    rw_latch_.WUnlock();
+    latch_.unlock();
     return;
   }
   bool before = it->second.IsEvictable();
@@ -98,18 +98,18 @@ void LRUKReplacer::SetEvictable(frame_id_t frame_id, bool set_evictable) {
     curr_size_--;
   }
   it->second.SetEvictable(set_evictable);
-  rw_latch_.WUnlock();
+  latch_.unlock();
 }
 
 void LRUKReplacer::Remove(frame_id_t frame_id) {
-  rw_latch_.WLock();
+  latch_.lock();
   auto it = cache_.find(frame_id);
   if (it != cache_.end()) {
     BUSTUB_ASSERT(it->second.IsEvictable(), "Remove is called on a non-evictable frame");
     cache_.erase(it);
     curr_size_--;
   }
-  rw_latch_.WUnlock();
+  latch_.unlock();
 }
 
 auto LRUKReplacer::Size() -> size_t { return curr_size_; }

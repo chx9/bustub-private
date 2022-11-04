@@ -162,14 +162,6 @@ class BufferPoolManagerInstance : public BufferPoolManager {
   std::list<frame_id_t> free_list_;
   /** This latch protects shared data structures. We recommend updating this comment to describe what it protects. */
   std::mutex latch_;
-  std::mutex flush_latch_;
-  std::mutex delete_latch_;
-  std::mutex allocate_page_latch_;
-  // ReaderWriterLatch rw_latch_;
-  // ReaderWriterLatch flush_latch_;
-  // ReaderWriterLatch delete_pgimp_latch_;
-  // ReaderWriterLatch allocate_page_latch_;
-  // ReaderWriterLatch dellocate_page_latch_;
   /**
    * @brief Allocate a page on disk. Caller should acquire the latch before calling this function.
    * @return the id of the allocated page
