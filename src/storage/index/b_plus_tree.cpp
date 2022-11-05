@@ -5,7 +5,7 @@
 #include "common/rid.h"
 // #include "storage/index/b_plus_tree.h"
 #include "storage/page/header_page.h"
-#include "storage/b_plus_tree.h"
+#include "include/storage/index/b_plus_tree.h"
 
 namespace bustub {
 INDEX_TEMPLATE_ARGUMENTS
