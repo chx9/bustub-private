@@ -4,8 +4,8 @@
 #include "common/logger.h"
 #include "common/rid.h"
 // #include "storage/index/b_plus_tree.h"
-#include "storage/page/header_page.h"
 #include "include/storage/index/b_plus_tree.h"
+#include "storage/page/header_page.h"
 
 namespace bustub {
 INDEX_TEMPLATE_ARGUMENTS
@@ -22,9 +22,7 @@ BPLUSTREE_TYPE::BPlusTree(std::string name, BufferPoolManager *buffer_pool_manag
  * Helper function to decide whether current b+tree is empty
  */
 INDEX_TEMPLATE_ARGUMENTS
-auto BPLUSTREE_TYPE::IsEmpty() const -> bool {
-  return root_page_id_ == INVALID_PAGE_ID;
-}
+auto BPLUSTREE_TYPE::IsEmpty() const -> bool {   return root_page_id_ == INVALID_PAGE_ID; }
 /*****************************************************************************
  * SEARCH
  *****************************************************************************/
@@ -35,6 +33,28 @@ auto BPLUSTREE_TYPE::IsEmpty() const -> bool {
  */
 INDEX_TEMPLATE_ARGUMENTS
 auto BPLUSTREE_TYPE::GetValue(const KeyType &key, std::vector<ValueType> *result, Transaction *transaction) -> bool {
+  if(IsEmpty()){
+    return false;
+  }
+  auto cur_page =reinterpret_cast<B_PLUS_TREE_INTERNAL_PAGE_TYPE *>(buffer_pool_manager_->FetchPage(root_page_id_)->GetData());
+  int sz = cur_page->GetSize();
+  while(!cur_page->IsLeafPage()){
+    int idx = 1;
+    while(idx < sz && comparator_(cur_page->KeyAt(idx) ,key) < 0){
+      idx++;
+    }
+    cur_page = reinterpret_cast<B_PLUS_TREE_INTERNAL_PAGE_TYPE *>(buffer_pool_manager_->FetchPage(cur_page->ValueAt(idx-1))->GetData());
+  }
+
+  if(cur_page->IsLeafPage()){
+    auto leaf_page = reinterpret_cast<B_PLUS_TREE_LEAF_PAGE_TYPE*> (cur_page);
+    for(int i=0;i<sz;i++){
+      if(comparator_(key, leaf_page->KeyAt(i)) == 0){
+        result->push_back(leaf_page->ValueAt(i));
+        return true;
+      }
+    }
+  }
   return false;
 }
 
@@ -50,7 +70,10 @@ auto BPLUSTREE_TYPE::GetValue(const KeyType &key, std::vector<ValueType> *result
  */
 INDEX_TEMPLATE_ARGUMENTS
 auto BPLUSTREE_TYPE::Insert(const KeyType &key, const ValueType &value, Transaction *transaction) -> bool {
-  return false;
+  if(IsEmpty()){
+    auto cur = ne
+    return true;
+  }
 }
 
 /*****************************************************************************

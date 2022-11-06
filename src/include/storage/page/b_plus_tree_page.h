@@ -14,6 +14,7 @@
 #include <climits>
 #include <cstdlib>
 #include <string>
+#include "include/storage/index/int_comparator.h"
 
 #include "buffer/buffer_pool_manager.h"
 #include "storage/index/generic_key.h"
