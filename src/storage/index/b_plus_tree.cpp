@@ -3,8 +3,7 @@
 #include "common/exception.h"
 #include "common/logger.h"
 #include "common/rid.h"
-// #include "storage/index/b_plus_tree.h"
-#include "include/storage/index/b_plus_tree.h"
+#include "storage/index/b_plus_tree.h"
 #include "storage/page/header_page.h"
 
 namespace bustub {
@@ -22,7 +21,7 @@ BPLUSTREE_TYPE::BPlusTree(std::string name, BufferPoolManager *buffer_pool_manag
  * Helper function to decide whether current b+tree is empty
  */
 INDEX_TEMPLATE_ARGUMENTS
-auto BPLUSTREE_TYPE::IsEmpty() const -> bool { return root_page_id_ == INVALID_PAGE_ID; }
+auto BPLUSTREE_TYPE::IsEmpty() const -> bool { return true; }
 /*****************************************************************************
  * SEARCH
  *****************************************************************************/
@@ -32,38 +31,7 @@ auto BPLUSTREE_TYPE::IsEmpty() const -> bool { return root_page_id_ == INVALID_P
  * @return : true means key exists
  */
 INDEX_TEMPLATE_ARGUMENTS
-auto BPLUSTREE_TYPE::FindLeaf(const KeyType &key) -> B_PLUS_TREE_LEAF_PAGE_TYPE * {
-  Page *page_ptr = buffer_pool_manager_->FetchPage(root_page_id_);
-  auto cur_page = reinterpret_cast<B_PLUS_TREE_INTERNAL_PAGE_TYPE *>(page_ptr->GetData());
-  int sz = cur_page->GetSize();
-  while (!cur_page->IsLeafPage()) {
-    int idx = 1;
-    while (idx < sz && comparator_(cur_page->KeyAt(idx), key) < 0) {
-      idx++;
-    }
-    page_id_t page_id = cur_page->ValueAt(idx - 1).GetPageId();
-    // unpin
-    buffer_pool_manager_->UnpinPage(cur_page->GetPageId(), false);
-    cur_page = reinterpret_cast<B_PLUS_TREE_INTERNAL_PAGE_TYPE *>(buffer_pool_manager_->FetchPage(page_id));
-  }
-  buffer_pool_manager_->UnpinPage(cur_page->GetPageId(), false);
-  return reinterpret_cast<B_PLUS_TREE_LEAF_PAGE_TYPE *>(cur_page);
-}
-
-INDEX_TEMPLATE_ARGUMENTS
 auto BPLUSTREE_TYPE::GetValue(const KeyType &key, std::vector<ValueType> *result, Transaction *transaction) -> bool {
-  if (IsEmpty()) {
-    return false;
-  }
-  auto leaf_page = FindLeaf(key);
-  int sz = leaf_page->GetSize();
-  for (int i = 0; i < sz; i++) {
-    if (comparator_(key, leaf_page->KeyAt(i)) == 0) {
-      result->push_back(leaf_page->ValueAt(i));
-      return true;
-    }
-    buffer_pool_manager_->UnpinPage(leaf_page->GetPageId(), false);
-  }
   return false;
 }
 
@@ -79,11 +47,6 @@ auto BPLUSTREE_TYPE::GetValue(const KeyType &key, std::vector<ValueType> *result
  */
 INDEX_TEMPLATE_ARGUMENTS
 auto BPLUSTREE_TYPE::Insert(const KeyType &key, const ValueType &value, Transaction *transaction) -> bool {
-  //  if (IsEmpty()) {
-  //
-  //    auto root_page = buffer_pool_manager_->NewPage();
-  //    return true;
-  //  }
   return false;
 }
 
