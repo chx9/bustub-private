@@ -83,7 +83,7 @@ auto BPLUSTREE_TYPE::Insert(const KeyType &key, const ValueType &value, Transact
     leaf_page->Init(page_id, INVALID_PAGE_ID, leaf_max_size_);
     root_page_id_ = page_id;
     //    UpdateRootPageId(value);
-    leaf_page->InsertKeyValue(key, value);
+    leaf_page->InsertKeyValue(key, value, comparator_);
     buffer_pool_manager_->UnpinPage(page_id, false);
     return true;
   }
