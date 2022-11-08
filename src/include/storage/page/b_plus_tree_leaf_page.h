@@ -50,12 +50,13 @@ class BPlusTreeLeafPage : public BPlusTreePage {
   void SetNextPageId(page_id_t next_page_id);
   auto KeyAt(int index) const -> KeyType;
   auto ValueAt(int index) const -> ValueType;
-  auto Insert(KeyType &key, ValueType &value) -> void;
+  auto SetKeyAt(int index, const KeyType &key) -> void;
+  auto SetValueAt(int index, const ValueType &value) -> void;
+  auto InsertKeyValue(const KeyType &key, const ValueType &value, KeyComparator &comparator) -> bool;
 
  private:
   page_id_t next_page_id_;
   // Flexible array member for page data.
   MappingType array_[1];
-  IntComparator comparator_;
 };
 }  // namespace bustub
