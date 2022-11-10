@@ -12,7 +12,9 @@
 
 #include <queue>
 
+#include "common/config.h"
 #include "storage/page/b_plus_tree_page.h"
+#include "storage/page/page.h"
 
 namespace bustub {
 
@@ -38,9 +40,12 @@ class BPlusTreeInternalPage : public BPlusTreePage {
   // must call initialize method after "create" a new node
   void Init(page_id_t page_id, page_id_t parent_id = INVALID_PAGE_ID, int max_size = INTERNAL_PAGE_SIZE);
 
-  auto KeyAt(int index) const -> KeyType;
   void SetKeyAt(int index, const KeyType &key);
+  void SetValueAt(int index, const ValueType &value);
   auto ValueAt(int index) const -> ValueType;
+  auto KeyAt(int index) const -> KeyType;
+  void InsertKeyValue(const KeyType &key, const page_id_t &value, const KeyComparator &comparator);
+  auto SplitInto(BPlusTreeInternalPage *new_internal_page_ptr) -> KeyType;
 
  private:
   // Flexible array member for page data.

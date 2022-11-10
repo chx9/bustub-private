@@ -53,6 +53,8 @@ class BPlusTreeLeafPage : public BPlusTreePage {
   auto SetKeyAt(int index, const KeyType &key) -> void;
   auto SetValueAt(int index, const ValueType &value) -> void;
   auto InsertKeyValue(const KeyType &key, const ValueType &value, KeyComparator &comparator) -> bool;
+  auto SplitInto(BPlusTreeLeafPage *new_leaf_page_ptr) -> KeyType;
+  auto PairAt(int index) -> const MappingType &;
 
  private:
   page_id_t next_page_id_;

@@ -14,6 +14,7 @@
 #include <string>
 #include <vector>
 
+#include "common/config.h"
 #include "concurrency/transaction.h"
 #include "storage/index/index_iterator.h"
 #include "storage/page/b_plus_tree_internal_page.h"
@@ -64,6 +65,8 @@ class BPlusTree {
   auto Begin() -> INDEXITERATOR_TYPE;
   auto Begin(const KeyType &key) -> INDEXITERATOR_TYPE;
   auto End() -> INDEXITERATOR_TYPE;
+
+  void InsertIntoInternal(page_id_t parent_page_id, const KeyType &key, const page_id_t &value);
 
   // print the B+ tree
   void Print(BufferPoolManager *bpm);
