@@ -12,6 +12,7 @@
 #include <iostream>
 #include <sstream>
 
+#include "buffer/buffer_pool_manager.h"
 #include "common/config.h"
 #include "common/exception.h"
 #include "common/logger.h"
@@ -87,6 +88,97 @@ void B_PLUS_TREE_INTERNAL_PAGE_TYPE::InsertKeyValue(const KeyType &key, const pa
   // insert
   array_[index] = {key, value};
   IncreaseSize(1);
+}
+INDEX_TEMPLATE_ARGUMENTS
+auto B_PLUS_TREE_INTERNAL_PAGE_TYPE::GetAdjcentBrother(const KeyType &key, bool &is_left,
+                                                       const KeyComparator &comparator) -> std::pair<int, page_id_t> {
+  int sz = GetSize();
+  int i = sz;
+  while (i > 0) {
+    if (comparator(KeyAt(i), key) <= 0) {
+      break;
+    }
+    i--;
+  }
+  if (i == 0) {
+    // right
+    is_left = false;
+    return {i + 1, ValueAt(i + 1)};
+  }
+  // left;
+  is_left = true;
+  return {i, ValueAt(i - 1)};
+}
+INDEX_TEMPLATE_ARGUMENTS
+void B_PLUS_TREE_INTERNAL_PAGE_TYPE::RemoveAt(int index) {
+  int sz = GetSize();
+  while (index < sz) {
+    array_[index] = array_[index + 1];
+    index++;
+  }
+  IncreaseSize(-1);
+}
+
+INDEX_TEMPLATE_ARGUMENTS
+void B_PLUS_TREE_INTERNAL_PAGE_TYPE::StealFromLeft(BPlusTreeInternalPage *brother_page_ptr,
+                                                   BPlusTreeInternalPage *parent_page_ptr, int index,
+                                                   BufferPoolManager *buffer_pool_manager_) {
+  SetKeyAt(0, parent_page_ptr->KeyAt(index));
+  parent_page_ptr->SetKeyAt(index, brother_page_ptr->KeyAt(brother_page_ptr->GetSize()));
+  int i = GetSize() + 1;
+  while (i > 0) {
+    array_[i] = array_[i - 1];
+    i--;
+  }
+  SetValueAt(0, brother_page_ptr->ValueAt(brother_page_ptr->ValueAt(brother_page_ptr->GetSize())));
+  IncreaseSize(1);
+  brother_page_ptr->IncreaseSize(-1);
+
+  page_id_t child_page_id = ValueAt(0);
+  auto child_page = buffer_pool_manager_->FetchPage(child_page_id);
+  auto child_page_ptr = reinterpret_cast<BPlusTreeInternalPage *>(child_page->GetData());
+  child_page_ptr->SetParentPageId(GetPageId());
+  buffer_pool_manager_->UnpinPage(child_page_ptr->GetPageId(), true);
+}
+INDEX_TEMPLATE_ARGUMENTS
+void B_PLUS_TREE_INTERNAL_PAGE_TYPE::StealFromRight(BPlusTreeInternalPage *brother_page_ptr,
+                                                    BPlusTreeInternalPage *parent_page_ptr, int index,
+                                                    BufferPoolManager *buffer_pool_manager_) {
+  SetKeyAt(GetSize() + 1, parent_page_ptr->KeyAt(index));
+  parent_page_ptr->SetKeyAt(index, brother_page_ptr->KeyAt(1));
+  SetValueAt(GetSize() + 1, brother_page_ptr->ValueAt(0));
+
+  int i = 0;
+  int brother_sz = brother_page_ptr->GetSize();
+  while (i < brother_sz) {
+    brother_page_ptr->array_[i] = brother_page_ptr->array_[i + 1];
+    i++;
+  }
+  IncreaseSize(1);
+  brother_page_ptr->IncreaseSize(-1);
+
+  page_id_t child_page_id = ValueAt(GetSize());
+  auto child_page = buffer_pool_manager_->FetchPage(child_page_id);
+  auto child_page_ptr = reinterpret_cast<BPlusTreeInternalPage *>(child_page->GetData());
+  child_page_ptr->SetParentPageId(GetPageId());
+  buffer_pool_manager_->UnpinPage(child_page_ptr->GetPageId(), true);
+}
+
+INDEX_TEMPLATE_ARGUMENTS
+void B_PLUS_TREE_INTERNAL_PAGE_TYPE::ConcatWith(BPlusTreeInternalPage *brother_page_ptr, const KeyType &key,
+                                                BufferPoolManager *buffer_pool_manager) {
+  int sz = GetSize();
+  SetKeyAt(0, key);
+  int internal_sz = brother_page_ptr->GetSize();
+  for (int i = 0; i <= internal_sz; i++) {
+    array_[i + sz + 1] = brother_page_ptr->array_[i];
+    auto child_page = buffer_pool_manager->FetchPage(brother_page_ptr->ValueAt(i));
+    auto child_page_ptr = reinterpret_cast<BPlusTreeInternalPage *>(child_page->GetData());
+    child_page_ptr->SetParentPageId(GetPageId());
+    buffer_pool_manager->UnpinPage(child_page_ptr->GetPageId(), true);
+  }
+  IncreaseSize(internal_sz + 1);
+  brother_page_ptr->SetSize(0);
 }
 // valuetype for internalNode should be page id_t
 template class BPlusTreeInternalPage<GenericKey<4>, page_id_t, GenericComparator<4>>;

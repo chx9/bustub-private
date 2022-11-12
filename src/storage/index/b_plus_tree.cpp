@@ -35,6 +35,24 @@ auto BPLUSTREE_TYPE::IsEmpty() const -> bool { return root_page_id_ == INVALID_P
  * @return : true means key exists
  */
 INDEX_TEMPLATE_ARGUMENTS
+auto BPLUSTREE_TYPE::GetValue(const KeyType &key, std::vector<ValueType> *result, Transaction *transaction) -> bool {
+  if (IsEmpty()) {
+    return false;
+  }
+  auto leaf_page_ptr = FindLeaf(key);
+  int sz = leaf_page_ptr->GetSize();
+  for (int i = 0; i < sz; i++) {
+    if (comparator_(leaf_page_ptr->KeyAt(i), key) == 0) {
+      result->emplace_back(leaf_page_ptr->ValueAt(i));
+      buffer_pool_manager_->UnpinPage(leaf_page_ptr->GetPageId(), false);
+      return true;
+    }
+  }
+  buffer_pool_manager_->UnpinPage(leaf_page_ptr->GetPageId(), false);
+  return false;
+}
+
+INDEX_TEMPLATE_ARGUMENTS
 auto BPLUSTREE_TYPE::FindLeaf(const KeyType &key) -> B_PLUS_TREE_LEAF_PAGE_TYPE * {
   page_id_t page_id = root_page_id_;
   Page *page_ptr = buffer_pool_manager_->FetchPage(page_id);
@@ -53,24 +71,6 @@ auto BPLUSTREE_TYPE::FindLeaf(const KeyType &key) -> B_PLUS_TREE_LEAF_PAGE_TYPE 
   }
   return reinterpret_cast<LeafPage *>(internal_page_ptr);
 }
-INDEX_TEMPLATE_ARGUMENTS
-auto BPLUSTREE_TYPE::GetValue(const KeyType &key, std::vector<ValueType> *result, Transaction *transaction) -> bool {
-  if (IsEmpty()) {
-    return false;
-  }
-  auto leaf_page_ptr = FindLeaf(key);
-  int sz = leaf_page_ptr->GetSize();
-  for (int i = 0; i < sz; i++) {
-    if (comparator_(leaf_page_ptr->KeyAt(i), key) == 0) {
-      result->emplace_back(leaf_page_ptr->ValueAt(i));
-      buffer_pool_manager_->UnpinPage(leaf_page_ptr->GetPageId(), false);
-      return true;
-    }
-  }
-  buffer_pool_manager_->UnpinPage(leaf_page_ptr->GetPageId(), false);
-  return false;
-}
-
 /*****************************************************************************
  * INSERTION
  *****************************************************************************/
@@ -195,8 +195,104 @@ void BPLUSTREE_TYPE::InsertIntoInternal(page_id_t parent_page_id, const KeyType 
  * necessary.
  */
 INDEX_TEMPLATE_ARGUMENTS
-void BPLUSTREE_TYPE::Remove(const KeyType &key, Transaction *transaction) {}
+void BPLUSTREE_TYPE::Remove(const KeyType &key, Transaction *transaction) {
+  if (IsEmpty()) {
+    return;
+  }
+  auto leaf_page_ptr = FindLeaf(key);
+  if (!leaf_page_ptr->Remove(key, comparator_)) {
+    buffer_pool_manager_->UnpinPage(leaf_page_ptr->GetPageId(), false);
+  }
+  if (leaf_page_ptr->IsRootPage()) {
+    if (leaf_page_ptr->GetSize() == 0) {
+      buffer_pool_manager_->UnpinPage(root_page_id_, true);
+      buffer_pool_manager_->DeletePage(root_page_id_);
+      root_page_id_ = INVALID_PAGE_ID;
+      UpdateRootPageId(0);
+    }
+    return;
+  }
 
+  if (leaf_page_ptr->GetSize() < leaf_page_ptr->GetMaxSize()) {
+    page_id_t parent_page_id = leaf_page_ptr->GetParentPageId();
+    auto parent_page = buffer_pool_manager_->FetchPage(parent_page_id);
+    auto parent_page_ptr = reinterpret_cast<InternalPage *>(parent_page);
+    bool is_left = true;
+    int index;
+    page_id_t brother_page_id;
+    std::tie(index, brother_page_id) =
+        parent_page_ptr->GetAdjcentBrother(leaf_page_ptr->KeyAt(0), is_left, comparator_);
+    auto brother_page = buffer_pool_manager_->FetchPage(brother_page_id);
+    auto brother_page_ptr = reinterpret_cast<LeafPage *>(brother_page->GetData());
+
+    if (brother_page_ptr->GetSize() > brother_page_ptr->GetMinSize()) {
+      leaf_page_ptr->StealFrom(brother_page_ptr, is_left);
+      parent_page_ptr->SetKeyAt(index, is_left ? leaf_page_ptr->KeyAt(0) : brother_page_ptr->KeyAt(0));
+
+      buffer_pool_manager_->UnpinPage(parent_page_ptr->GetPageId(), false);
+      buffer_pool_manager_->UnpinPage(leaf_page_ptr->GetPageId(), true);
+      buffer_pool_manager_->UnpinPage(brother_page_ptr->GetPageId(), true);
+      return;
+    }
+    //
+    if (!is_left) {
+      std::swap(leaf_page_ptr, brother_page_ptr);
+    }
+    parent_page_ptr->RemoveAt(index);
+    brother_page_ptr->ConcatWith(leaf_page_ptr);
+
+    buffer_pool_manager_->UnpinPage(leaf_page_ptr->GetPageId(), true);
+    buffer_pool_manager_->DeletePage(leaf_page_ptr->GetPageId());
+    buffer_pool_manager_->UnpinPage(brother_page_ptr->GetPageId(), true);
+    buffer_pool_manager_->UnpinPage(parent_page_ptr->GetPageId(), true);
+    CheckParent(parent_page_id);
+  }
+}
+
+INDEX_TEMPLATE_ARGUMENTS
+void BPLUSTREE_TYPE::CheckParent(page_id_t parent_page_id) {
+  auto internal_page = buffer_pool_manager_->FetchPage(parent_page_id);
+  auto internal_page_ptr = reinterpret_cast<InternalPage *>(internal_page->GetData());
+  if (internal_page_ptr->IsRootPage()) {
+    if (internal_page_ptr->GetSize() == 0) {
+      root_page_id_ = internal_page_ptr->GetPageId();
+      UpdateRootPageId(0);
+      buffer_pool_manager_->UnpinPage(internal_page_ptr->GetPageId(), false);
+      buffer_pool_manager_->DeletePage(internal_page_ptr->GetPageId());
+    }
+    return;
+  }
+
+  if (internal_page_ptr->GetSize() < internal_page_ptr->GetMinSize()) {
+    page_id_t parent_page_id = internal_page_ptr->GetParentPageId();
+
+    auto parent_page = buffer_pool_manager_->FetchPage(parent_page_id);
+    auto parent_page_ptr = reinterpret_cast<InternalPage *>(parent_page);
+    bool is_left = true;
+    int index;
+    page_id_t brother_page_id;
+    std::tie(index, brother_page_id) =
+        parent_page_ptr->GetAdjcentBrother(internal_page_ptr->KeyAt(1), is_left, comparator_);
+    auto brother_page = buffer_pool_manager_->FetchPage(brother_page_id);
+    auto brother_page_ptr = reinterpret_cast<InternalPage *>(brother_page->GetData());
+
+    if (brother_page_ptr->GetSize() > brother_page_ptr->GetMinSize()) {
+      if (is_left) {
+        internal_page_ptr->StealFromLeft(brother_page_ptr, parent_page_ptr, is_left, buffer_pool_manager_);
+      } else {
+        internal_page_ptr->StealFromRight(brother_page_ptr, parent_page_ptr, is_left, buffer_pool_manager_);
+      }
+      brother_page_ptr->ConcatWith(internal_page_ptr, parent_page_ptr->KeyAt(index), buffer_pool_manager_);
+      parent_page_ptr->RemoveAt(index);
+
+      buffer_pool_manager_->UnpinPage(internal_page_ptr->GetPageId(), true);
+      buffer_pool_manager_->DeletePage(internal_page_ptr->GetPageId());
+      buffer_pool_manager_->UnpinPage(parent_page_ptr->GetPageId(), true);
+      buffer_pool_manager_->UnpinPage(brother_page_ptr->GetPageId(), true);
+      return;
+    }
+  }
+}
 /*****************************************************************************
  * INDEX ITERATOR
  *****************************************************************************/

@@ -68,6 +68,7 @@ class BPlusTree {
 
   void InsertIntoInternal(page_id_t parent_page_id, const KeyType &key, const page_id_t &value);
 
+  void CheckParent(page_id_t parent_page_id);
   // print the B+ tree
   void Print(BufferPoolManager *bpm);
 

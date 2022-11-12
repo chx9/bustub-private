@@ -11,7 +11,8 @@
 #pragma once
 
 #include <queue>
-
+#include <utility>
+#include "buffer/buffer_pool_manager.h"
 #include "common/config.h"
 #include "storage/page/b_plus_tree_page.h"
 #include "storage/page/page.h"
@@ -46,6 +47,14 @@ class BPlusTreeInternalPage : public BPlusTreePage {
   auto KeyAt(int index) const -> KeyType;
   void InsertKeyValue(const KeyType &key, const page_id_t &value, const KeyComparator &comparator);
   auto SplitInto(BPlusTreeInternalPage *new_internal_page_ptr) -> KeyType;
+  auto GetAdjcentBrother(const KeyType &key, bool &is_left, const KeyComparator &comparator)
+      -> std::pair<int, page_id_t>;
+  void RemoveAt(int index);
+  void StealFromLeft(BPlusTreeInternalPage *brother_page_ptr, BPlusTreeInternalPage *parent_page_ptr, int index,
+                     BufferPoolManager *buffer_pool_manager_);
+  void StealFromRight(BPlusTreeInternalPage *brother_page_ptr, BPlusTreeInternalPage *parent_page_ptr, int index,
+                      BufferPoolManager *buffer_pool_manager_);
+  void ConcatWith(BPlusTreeInternalPage *brother_page_ptr, const KeyType &key, BufferPoolManager *buffer_pool_manager_);
 
  private:
   // Flexible array member for page data.

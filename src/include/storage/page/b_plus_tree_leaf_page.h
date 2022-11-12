@@ -55,6 +55,9 @@ class BPlusTreeLeafPage : public BPlusTreePage {
   auto InsertKeyValue(const KeyType &key, const ValueType &value, KeyComparator &comparator) -> bool;
   auto SplitInto(BPlusTreeLeafPage *new_leaf_page_ptr) -> KeyType;
   auto PairAt(int index) -> const MappingType &;
+  auto Remove(const KeyType &key, const KeyComparator &comparator) -> bool;
+  void StealFrom(BPlusTreeLeafPage *brother_page_ptr, bool &is_left);
+  void ConcatWith(BPlusTreeLeafPage *leaf_page_ptr);
 
  private:
   page_id_t next_page_id_;
