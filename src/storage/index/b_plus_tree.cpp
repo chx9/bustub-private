@@ -90,26 +90,31 @@ auto BPLUSTREE_TYPE::Insert(const KeyType &key, const ValueType &value, Transact
     UpdateRootPageId(1);
     leaf_page_ptr = reinterpret_cast<LeafPage *>(root_page->GetData());
     leaf_page_ptr->Init(root_page_id_, INVALID_PAGE_ID, leaf_max_size_);
+    // insert key&value into newnode
     leaf_page_ptr->InsertKeyValue(key, value, comparator_);
     buffer_pool_manager_->UnpinPage(root_page_id_, true);
     return true;
   }
+  // find the right leaf to insert
   leaf_page_ptr = FindLeaf(key);
-  // insert
+  // insert into key value, same key not allowed!
   if (!leaf_page_ptr->InsertKeyValue(key, value, comparator_)) {
+    // unpin
     buffer_pool_manager_->UnpinPage(leaf_page_ptr->GetPageId(), false);
     return false;
   }
+  // if size == maxsize, split the leaf;
   if (leaf_page_ptr->GetSize() == leaf_page_ptr->GetMaxSize()) {
     // 1. split leaf;
     page_id_t new_page_id;
     auto new_page = buffer_pool_manager_->NewPage(&new_page_id);
     auto new_leaf_page_ptr = reinterpret_cast<LeafPage *>(new_page->GetData());
     new_leaf_page_ptr->Init(new_page_id, leaf_page_ptr->GetParentPageId(), leaf_max_size_);
+    // split leaf into new leaf
     auto mid_key = leaf_page_ptr->SplitInto(new_leaf_page_ptr);
-    // 2. if root is leaf, split and update root page id;
+    // if current node is root page, create new internal page, set it to new root
     if (leaf_page_ptr->IsRootPage()) {
-      // 2. create new internal page, set to root_page_id
+      // create new internal page, set to root_page_id
       auto page = buffer_pool_manager_->NewPage(&root_page_id_);
       UpdateRootPageId(0);
       auto new_internal_page_ptr = reinterpret_cast<InternalPage *>(page->GetData());
