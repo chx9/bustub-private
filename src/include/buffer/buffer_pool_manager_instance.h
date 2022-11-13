@@ -19,7 +19,6 @@
 #include "buffer/buffer_pool_manager.h"
 #include "buffer/lru_k_replacer.h"
 #include "common/config.h"
-#include "common/rwlatch.h"
 #include "container/hash/extendible_hash_table.h"
 #include "recovery/log_manager.h"
 #include "storage/disk/disk_manager.h"
@@ -162,6 +161,7 @@ class BufferPoolManagerInstance : public BufferPoolManager {
   std::list<frame_id_t> free_list_;
   /** This latch protects shared data structures. We recommend updating this comment to describe what it protects. */
   std::mutex latch_;
+
   /**
    * @brief Allocate a page on disk. Caller should acquire the latch before calling this function.
    * @return the id of the allocated page

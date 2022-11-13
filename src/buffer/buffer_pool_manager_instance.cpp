@@ -158,6 +158,7 @@ void BufferPoolManagerInstance::FlushAllPgsImp() {
       pages_[i].is_dirty_ = false;
     }
   }
+  latch_.unlock();
 }
 /**
  * TODO(P1): Add implementation
