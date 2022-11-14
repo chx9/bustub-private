@@ -68,6 +68,18 @@ auto ExtendibleHashTable<K, V>::GetNumBucketsInternal() const -> int {
   return num_buckets_;
 }
 
+/**
+ *
+ * TODO(P1): Add implementation
+ *
+ * @brief Find the value associated with the given key.
+ *
+ * Use IndexOf(key) to find the directory index the key hashes to.
+ *
+ * @param key The key to be searched.
+ * @param[out] value The value associated with the key.
+ * @return True if the key is found, false otherwise.
+ */
 template <typename K, typename V>
 auto ExtendibleHashTable<K, V>::Find(const K &key, V &value) -> bool {
   rif_latch_.lock();
@@ -77,6 +89,15 @@ auto ExtendibleHashTable<K, V>::Find(const K &key, V &value) -> bool {
   return success;
 }
 
+/**
+ *
+ * TODO(P1): Add implementation
+ *
+ * @brief Given the key, remove the corresponding key-value pair in the hash table.
+ * Shrink & Combination is not required for this project
+ * @param key The key to be deleted.
+ * @return True if the key exists, false otherwise.
+ */
 template <typename K, typename V>
 auto ExtendibleHashTable<K, V>::Remove(const K &key) -> bool {
   rif_latch_.lock();
@@ -86,6 +107,21 @@ auto ExtendibleHashTable<K, V>::Remove(const K &key) -> bool {
   return success;
 }
 
+/**
+ *
+ * TODO(P1): Add implementation
+ *
+ * @brief Insert the given key-value pair into the hash table.
+ * If a key already exists, the value should be updated.
+ * If the bucket is full and can't be inserted, do the following steps before retrying:
+ *    1. If the local depth of the bucket is equal to the global depth,
+ *        increment the global depth and double the size of the directory.
+ *    2. Increment the local depth of the bucket.
+ *    3. Split the bucket and redistribute directory pointers & the kv pairs in the bucket.
+ *
+ * @param key The key to be inserted.
+ * @param value The value to be inserted.
+ */
 template <typename K, typename V>
 void ExtendibleHashTable<K, V>::Insert(const K &key, const V &value) {
   // UNREACHABLE("not implemented");
@@ -142,6 +178,15 @@ void ExtendibleHashTable<K, V>::Insert(const K &key, const V &value) {
 template <typename K, typename V>
 ExtendibleHashTable<K, V>::Bucket::Bucket(size_t array_size, int depth) : size_(array_size), depth_(depth) {}
 
+/**
+ *
+ * TODO(P1): Add implementation
+ *
+ * @brief Find the value associated with the given key in the bucket.
+ * @param key The key to be searched.
+ * @param[out] value The value associated with the key.
+ * @return True if the key is found, false otherwise.
+ */
 template <typename K, typename V>
 auto ExtendibleHashTable<K, V>::Bucket::Find(const K &key, V &value) -> bool {
   latch_.lock();
@@ -158,6 +203,14 @@ auto ExtendibleHashTable<K, V>::Bucket::Find(const K &key, V &value) -> bool {
   return false;
 }
 
+/**
+ *
+ * TODO(P1): Add implementation
+ *
+ * @brief Given the key, remove the corresponding key-value pair in the bucket.
+ * @param key The key to be deleted.
+ * @return True if the key exists, false otherwise.
+ */
 template <typename K, typename V>
 auto ExtendibleHashTable<K, V>::Bucket::Remove(const K &key) -> bool {
   latch_.lock();
@@ -174,6 +227,17 @@ auto ExtendibleHashTable<K, V>::Bucket::Remove(const K &key) -> bool {
   return true;
 }
 
+/**
+ *
+ * TODO(P1): Add implementation
+ *
+ * @brief Insert the given key-value pair into the bucket.
+ *      1. If a key already exists, the value should be updated.
+ *      2. If the bucket is full, do nothing and return false.
+ * @param key The key to be inserted.
+ * @param value The value to be inserted.
+ * @return True if the key-value pair is inserted, false otherwise.
+ */
 template <typename K, typename V>
 auto ExtendibleHashTable<K, V>::Bucket::Insert(const K &key, const V &value) -> bool {
   latch_.lock();
