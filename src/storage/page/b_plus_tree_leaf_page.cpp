@@ -73,8 +73,7 @@ INDEX_TEMPLATE_ARGUMENTS
 auto B_PLUS_TREE_LEAF_PAGE_TYPE::SetValueAt(int index, const ValueType &value) -> void { array_[index].second = value; }
 
 INDEX_TEMPLATE_ARGUMENTS
-auto B_PLUS_TREE_LEAF_PAGE_TYPE::InsertKeyValue(const KeyType &key, const ValueType &value, KeyComparator &comparator)
-    -> bool {
+auto B_PLUS_TREE_LEAF_PAGE_TYPE::Insert(const KeyType &key, const ValueType &value, KeyComparator &comparator) -> bool {
   int sz = GetSize();
   // find the right position
   int index = 0;
@@ -161,7 +160,9 @@ void B_PLUS_TREE_LEAF_PAGE_TYPE::ConcatWith(BPlusTreeLeafPage *leaf_page_ptr) {
     array_[i + sz] = leaf_page_ptr->array_[i];
   }
   IncreaseSize(leaf_size);
+
   leaf_page_ptr->SetSize(0);
+  SetNextPageId(leaf_page_ptr->GetNextPageId());
 }
 template class BPlusTreeLeafPage<GenericKey<4>, RID, GenericComparator<4>>;
 template class BPlusTreeLeafPage<GenericKey<8>, RID, GenericComparator<8>>;

@@ -42,7 +42,7 @@ auto INDEXITERATOR_TYPE::operator++() -> INDEXITERATOR_TYPE & {
     page_id_ = leaf_page_ptr_->GetNextPageId();
     buffer_pool_manager_->UnpinPage(leaf_page_ptr_->GetNextPageId(), false);
     auto leaf_page = buffer_pool_manager_->FetchPage(page_id_);
-    leaf_page_ptr_ = reinterpret_cast<B_PLUS_TREE_LEAF_PAGE_TYPE *>(leaf_page);
+    leaf_page_ptr_ = reinterpret_cast<B_PLUS_TREE_LEAF_PAGE_TYPE *>(leaf_page->GetData());
     index_ = 0;
   }
   return *this;

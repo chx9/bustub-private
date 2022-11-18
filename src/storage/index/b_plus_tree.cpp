@@ -91,14 +91,14 @@ auto BPLUSTREE_TYPE::Insert(const KeyType &key, const ValueType &value, Transact
     leaf_page_ptr = reinterpret_cast<LeafPage *>(root_page->GetData());
     leaf_page_ptr->Init(root_page_id_, INVALID_PAGE_ID, leaf_max_size_);
     // insert key&value into newnode
-    leaf_page_ptr->InsertKeyValue(key, value, comparator_);
+    leaf_page_ptr->Insert(key, value, comparator_);
     buffer_pool_manager_->UnpinPage(root_page_id_, true);
     return true;
   }
   // find the right leaf to insert
   leaf_page_ptr = FindLeaf(key);
   // insert into key value, same key not allowed!
-  if (!leaf_page_ptr->InsertKeyValue(key, value, comparator_)) {
+  if (!leaf_page_ptr->Insert(key, value, comparator_)) {
     // unpin
     buffer_pool_manager_->UnpinPage(leaf_page_ptr->GetPageId(), false);
     return false;
@@ -147,7 +147,7 @@ INDEX_TEMPLATE_ARGUMENTS
 void BPLUSTREE_TYPE::InsertIntoInternal(page_id_t parent_page_id, const KeyType &key, const page_id_t &value) {
   auto internal_page = buffer_pool_manager_->FetchPage(parent_page_id);
   auto internal_page_ptr = reinterpret_cast<InternalPage *>(internal_page->GetData());
-  internal_page_ptr->InsertKeyValue(key, value, comparator_);
+  internal_page_ptr->Insert(key, value, comparator_);
 
   if (internal_page_ptr->GetSize() == internal_page_ptr->GetMaxSize()) {
     // if full, split
@@ -214,6 +214,8 @@ void BPLUSTREE_TYPE::Remove(const KeyType &key, Transaction *transaction) {
       buffer_pool_manager_->DeletePage(root_page_id_);
       root_page_id_ = INVALID_PAGE_ID;
       UpdateRootPageId(0);
+    } else {
+      buffer_pool_manager_->UnpinPage(root_page_id_, true);
     }
     return;
   }
@@ -260,11 +262,18 @@ void BPLUSTREE_TYPE::CheckParent(page_id_t parent_page_id) {
   auto internal_page_ptr = reinterpret_cast<InternalPage *>(internal_page->GetData());
   if (internal_page_ptr->IsRootPage()) {
     if (internal_page_ptr->GetSize() == 0) {
-      root_page_id_ = internal_page_ptr->GetPageId();
+      auto new_root_page_id = internal_page_ptr->ValueAt(0);
+      auto new_root_page = buffer_pool_manager_->FetchPage(new_root_page_id);
+      auto new_root_page_ptr = reinterpret_cast<InternalPage *>(new_root_page->GetData());
+      new_root_page_ptr->SetParentPageId(INVALID_PAGE_ID);
+      buffer_pool_manager_->UnpinPage(new_root_page_id, true);
+      root_page_id_ = new_root_page_id;
       UpdateRootPageId(0);
       buffer_pool_manager_->UnpinPage(internal_page_ptr->GetPageId(), false);
       buffer_pool_manager_->DeletePage(internal_page_ptr->GetPageId());
+      return;
     }
+    buffer_pool_manager_->UnpinPage(internal_page_ptr->GetPageId(), false);
     return;
   }
 

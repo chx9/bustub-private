@@ -45,7 +45,7 @@ class BPlusTreeInternalPage : public BPlusTreePage {
   void SetValueAt(int index, const ValueType &value);
   auto ValueAt(int index) const -> ValueType;
   auto KeyAt(int index) const -> KeyType;
-  void InsertKeyValue(const KeyType &key, const page_id_t &value, const KeyComparator &comparator);
+  void Insert(const KeyType &key, const page_id_t &value, const KeyComparator &comparator);
   auto SplitInto(BPlusTreeInternalPage *new_internal_page_ptr) -> KeyType;
   auto GetAdjacentBrother(const KeyType &key, bool &is_left, const KeyComparator &comparator)
       -> std::pair<int, page_id_t>;

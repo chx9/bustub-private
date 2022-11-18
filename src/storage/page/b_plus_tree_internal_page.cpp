@@ -74,8 +74,8 @@ INDEX_TEMPLATE_ARGUMENTS
 auto B_PLUS_TREE_INTERNAL_PAGE_TYPE::ValueAt(int index) const -> ValueType { return array_[index].second; }
 
 INDEX_TEMPLATE_ARGUMENTS
-void B_PLUS_TREE_INTERNAL_PAGE_TYPE::InsertKeyValue(const KeyType &key, const page_id_t &value,
-                                                    const KeyComparator &comparator) {
+void B_PLUS_TREE_INTERNAL_PAGE_TYPE::Insert(const KeyType &key, const page_id_t &value,
+                                            const KeyComparator &comparator) {
   int sz = GetSize();
   int index = 1;
   while (index <= sz && comparator(KeyAt(index), key) < 0) {
@@ -91,7 +91,7 @@ void B_PLUS_TREE_INTERNAL_PAGE_TYPE::InsertKeyValue(const KeyType &key, const pa
 }
 INDEX_TEMPLATE_ARGUMENTS
 auto B_PLUS_TREE_INTERNAL_PAGE_TYPE::GetAdjacentBrother(const KeyType &key, bool &is_left,
-                                                       const KeyComparator &comparator) -> std::pair<int, page_id_t> {
+                                                        const KeyComparator &comparator) -> std::pair<int, page_id_t> {
   int sz = GetSize();
   int i = sz;
   while (i > 0) {

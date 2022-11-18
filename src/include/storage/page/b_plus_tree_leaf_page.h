@@ -52,7 +52,7 @@ class BPlusTreeLeafPage : public BPlusTreePage {
   auto ValueAt(int index) const -> ValueType;
   auto SetKeyAt(int index, const KeyType &key) -> void;
   auto SetValueAt(int index, const ValueType &value) -> void;
-  auto InsertKeyValue(const KeyType &key, const ValueType &value, KeyComparator &comparator) -> bool;
+  auto Insert(const KeyType &key, const ValueType &value, KeyComparator &comparator) -> bool;
   auto SplitInto(BPlusTreeLeafPage *new_leaf_page_ptr) -> KeyType;
   auto PairAt(int index) -> const MappingType &;
   auto Remove(const KeyType &key, const KeyComparator &comparator) -> bool;
