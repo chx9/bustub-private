@@ -226,7 +226,7 @@ void BPLUSTREE_TYPE::Remove(const KeyType &key, Transaction *transaction) {
     int index;
     page_id_t brother_page_id;
     std::tie(index, brother_page_id) =
-        parent_page_ptr->GetAdjcentBrother(leaf_page_ptr->KeyAt(0), is_left, comparator_);
+        parent_page_ptr->GetAdjacentBrother(leaf_page_ptr->KeyAt(0), is_left, comparator_);
     auto brother_page = buffer_pool_manager_->FetchPage(brother_page_id);
     auto brother_page_ptr = reinterpret_cast<LeafPage *>(brother_page->GetData());
 
@@ -277,7 +277,7 @@ void BPLUSTREE_TYPE::CheckParent(page_id_t parent_page_id) {
     int index;
     page_id_t brother_page_id;
     std::tie(index, brother_page_id) =
-        parent_page_ptr->GetAdjcentBrother(internal_page_ptr->KeyAt(1), is_left, comparator_);
+        parent_page_ptr->GetAdjacentBrother(internal_page_ptr->KeyAt(1), is_left, comparator_);
     auto brother_page = buffer_pool_manager_->FetchPage(brother_page_id);
     auto brother_page_ptr = reinterpret_cast<InternalPage *>(brother_page->GetData());
 

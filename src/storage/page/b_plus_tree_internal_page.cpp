@@ -90,7 +90,7 @@ void B_PLUS_TREE_INTERNAL_PAGE_TYPE::InsertKeyValue(const KeyType &key, const pa
   IncreaseSize(1);
 }
 INDEX_TEMPLATE_ARGUMENTS
-auto B_PLUS_TREE_INTERNAL_PAGE_TYPE::GetAdjcentBrother(const KeyType &key, bool &is_left,
+auto B_PLUS_TREE_INTERNAL_PAGE_TYPE::GetAdjacentBrother(const KeyType &key, bool &is_left,
                                                        const KeyComparator &comparator) -> std::pair<int, page_id_t> {
   int sz = GetSize();
   int i = sz;
