@@ -1,21 +1,9 @@
-//===----------------------------------------------------------------------===//
-//
-//                         CMU-DB Project (15-445/645)
-//                         ***DO NO SHARE PUBLICLY***
-//
-// Identification: src/include/page/b_plus_tree_internal_page.h
-//
-// Copyright (c) 2018, Carnegie Mellon University Database Group
-//
-//===----------------------------------------------------------------------===//
 #pragma once
 
 #include <queue>
 #include <utility>
-#include "buffer/buffer_pool_manager.h"
-#include "common/config.h"
+
 #include "storage/page/b_plus_tree_page.h"
-#include "storage/page/page.h"
 
 namespace bustub {
 
@@ -41,11 +29,11 @@ class BPlusTreeInternalPage : public BPlusTreePage {
   // must call initialize method after "create" a new node
   void Init(page_id_t page_id, page_id_t parent_id = INVALID_PAGE_ID, int max_size = INTERNAL_PAGE_SIZE);
 
-  void SetKeyAt(int index, const KeyType &key);
-  void SetValueAt(int index, const ValueType &value);
-  auto ValueAt(int index) const -> ValueType;
   auto KeyAt(int index) const -> KeyType;
-  void Insert(const KeyType &key, const page_id_t &value, const KeyComparator &comparator);
+  void SetKeyAt(int index, const KeyType &key);
+  auto ValueAt(int index) const -> ValueType;
+  void SetValueAt(int index, const ValueType &value);
+  void Insert(const KeyType &key, const page_id_t &page_id, const KeyComparator &comparator);
   auto SplitInto(BPlusTreeInternalPage *new_internal_page_ptr) -> KeyType;
   auto GetAdjacentBrother(const KeyType &key, bool &is_left, const KeyComparator &comparator)
       -> std::pair<int, page_id_t>;
@@ -54,7 +42,7 @@ class BPlusTreeInternalPage : public BPlusTreePage {
                      BufferPoolManager *buffer_pool_manager_);
   void StealFromRight(BPlusTreeInternalPage *brother_page_ptr, BPlusTreeInternalPage *parent_page_ptr, int index,
                       BufferPoolManager *buffer_pool_manager_);
-  void ConcatWith(BPlusTreeInternalPage *brother_page_ptr, const KeyType &key, BufferPoolManager *buffer_pool_manager_);
+  void ConcatWith(BPlusTreeInternalPage *brother_page_ptr, const KeyType &key, BufferPoolManager *buffer_pool_manager);
 
  private:
   // Flexible array member for page data.

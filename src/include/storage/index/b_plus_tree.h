@@ -14,7 +14,6 @@
 #include <string>
 #include <vector>
 
-#include "common/config.h"
 #include "concurrency/transaction.h"
 #include "storage/index/index_iterator.h"
 #include "storage/page/b_plus_tree_internal_page.h"
@@ -55,8 +54,11 @@ class BPlusTree {
   // return the value associated with a given key
   auto GetValue(const KeyType &key, std::vector<ValueType> *result, Transaction *transaction = nullptr) -> bool;
 
-  // return the leaf page
-  auto FindLeaf(const KeyType &key) -> B_PLUS_TREE_LEAF_PAGE_TYPE *;
+  auto FindLeaf(const KeyType &key, Transaction *transaction = nullptr) -> LeafPage *;
+
+  void InsertIntoInternal(const KeyType &key, const page_id_t &value, Transaction *transaction = nullptr);
+
+  void CheckParent(page_id_t internal_page_id);
 
   // return the page id of the root node
   auto GetRootPageId() -> page_id_t;
@@ -66,9 +68,6 @@ class BPlusTree {
   auto Begin(const KeyType &key) -> INDEXITERATOR_TYPE;
   auto End() -> INDEXITERATOR_TYPE;
 
-  void InsertIntoInternal(page_id_t parent_page_id, const KeyType &key, const page_id_t &value);
-
-  void CheckParent(page_id_t parent_page_id);
   // print the B+ tree
   void Print(BufferPoolManager *bpm);
 

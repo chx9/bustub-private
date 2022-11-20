@@ -1,13 +1,9 @@
 #include <string>
 
-#include "buffer/buffer_pool_manager.h"
-#include "common/config.h"
 #include "common/exception.h"
 #include "common/logger.h"
 #include "common/rid.h"
 #include "storage/index/b_plus_tree.h"
-#include "storage/index/index_iterator.h"
-#include "storage/page/b_plus_tree_page.h"
 #include "storage/page/header_page.h"
 
 namespace bustub {
@@ -36,27 +32,63 @@ auto BPLUSTREE_TYPE::IsEmpty() const -> bool { return root_page_id_ == INVALID_P
  */
 INDEX_TEMPLATE_ARGUMENTS
 auto BPLUSTREE_TYPE::GetValue(const KeyType &key, std::vector<ValueType> *result, Transaction *transaction) -> bool {
+  // 空的话返回false
   if (IsEmpty()) {
     return false;
   }
-  auto leaf_page_ptr = FindLeaf(key);
+
+  // 根据key找到对应的leafpage
+  page_id_t page_id = root_page_id_;
+  // FetchPage + RLatch
+  Page *page_ptr = buffer_pool_manager_->FetchPage(page_id);
+  page_ptr->RLatch();
+  // 一开始没法判断是leaf还是internal,所以都转换成internal
+  auto internal_page_ptr = reinterpret_cast<InternalPage *>(page_ptr->GetData());
+
+  // 如果是leaf,那就直接转换成leaf然后返回
+  while (!internal_page_ptr->IsLeafPage()) {
+    int i = 1;
+    int sz = internal_page_ptr->GetSize();
+    while (i <= sz && comparator_(internal_page_ptr->KeyAt(i), key) <= 0) {
+      i++;
+    }
+    page_id = internal_page_ptr->ValueAt(i - 1);
+    // RUnlatch + UnpinPage
+    page_ptr->RUnlatch();
+    buffer_pool_manager_->UnpinPage(page_ptr->GetPageId(), false);
+    // FetchPage + RLatch
+    page_ptr = buffer_pool_manager_->FetchPage(page_id);
+    page_ptr->RLatch();
+
+    internal_page_ptr = reinterpret_cast<InternalPage *>(page_ptr->GetData());
+  }
+
+  auto leaf_page_ptr = reinterpret_cast<LeafPage *>(internal_page_ptr);
+  // 在leafpage中根据key找到value,O(n)复杂度,遍历完如果没找到,那就最后返回false
   int sz = leaf_page_ptr->GetSize();
   for (int i = 0; i < sz; i++) {
     if (comparator_(leaf_page_ptr->KeyAt(i), key) == 0) {
       result->emplace_back(leaf_page_ptr->ValueAt(i));
+      // RUnlatch + UnpinPage
+      page_ptr->RUnlatch();
       buffer_pool_manager_->UnpinPage(leaf_page_ptr->GetPageId(), false);
       return true;
     }
   }
+  page_ptr->RUnlatch();
   buffer_pool_manager_->UnpinPage(leaf_page_ptr->GetPageId(), false);
   return false;
 }
 
 INDEX_TEMPLATE_ARGUMENTS
-auto BPLUSTREE_TYPE::FindLeaf(const KeyType &key) -> B_PLUS_TREE_LEAF_PAGE_TYPE * {
+auto BPLUSTREE_TYPE::FindLeaf(const KeyType &key, Transaction *transaction) -> LeafPage * {
+  // 因为前面判断了是否为空,所以root_page_id肯定是有值的,因此可以根据root_page_id_拿到page
   page_id_t page_id = root_page_id_;
   Page *page_ptr = buffer_pool_manager_->FetchPage(page_id);
+  // 一开始没法判断是leaf还是internal,所以都转换成internal
   auto internal_page_ptr = reinterpret_cast<InternalPage *>(page_ptr->GetData());
+
+  // 如果是leaf,那就直接转换成leaf然后返回
   while (!internal_page_ptr->IsLeafPage()) {
     int i = 1;
     int sz = internal_page_ptr->GetSize();
@@ -69,8 +101,10 @@ auto BPLUSTREE_TYPE::FindLeaf(const KeyType &key) -> B_PLUS_TREE_LEAF_PAGE_TYPE 
     page_ptr = buffer_pool_manager_->FetchPage(page_id);
     internal_page_ptr = reinterpret_cast<InternalPage *>(page_ptr->GetData());
   }
+
   return reinterpret_cast<LeafPage *>(internal_page_ptr);
 }
+
 /*****************************************************************************
  * INSERTION
  *****************************************************************************/
@@ -83,112 +117,220 @@ auto BPLUSTREE_TYPE::FindLeaf(const KeyType &key) -> B_PLUS_TREE_LEAF_PAGE_TYPE 
  */
 INDEX_TEMPLATE_ARGUMENTS
 auto BPLUSTREE_TYPE::Insert(const KeyType &key, const ValueType &value, Transaction *transaction) -> bool {
-  B_PLUS_TREE_LEAF_PAGE_TYPE *leaf_page_ptr;
+  // 如果为空，就要创建新的节点
   if (IsEmpty()) {
-    // create leaf node, and set it to root;
-    auto root_page = buffer_pool_manager_->NewPage(&root_page_id_);
+    // 从buffer_pool_manager_种new一个出来，并且对root_page_id_赋值
+    Page *root_page = buffer_pool_manager_->NewPage(&root_page_id_);
+    // 更新headerpage种的root_page_id
     UpdateRootPageId(1);
-    leaf_page_ptr = reinterpret_cast<LeafPage *>(root_page->GetData());
+    // 当B+树是空的时候，生成的肯定是叶子节点，进行强制转换reinterpret_cast
+    auto leaf_page_ptr = reinterpret_cast<LeafPage *>(root_page->GetData());
+    // 初始化叶子节点，page_id是root_page_id_，parent_id为INVALID_PAGE_ID，max_size根据b+的成员来
     leaf_page_ptr->Init(root_page_id_, INVALID_PAGE_ID, leaf_max_size_);
-    // insert key&value into newnode
+    // 将key插入到这个leaf的第一个位置
     leaf_page_ptr->Insert(key, value, comparator_);
+    // Unpin
     buffer_pool_manager_->UnpinPage(root_page_id_, true);
     return true;
   }
-  // find the right leaf to insert
-  leaf_page_ptr = FindLeaf(key);
-  // insert into key value, same key not allowed!
+  // 如果不为空，就要去找到合适插入的位置
+  // 因为前面判断了是否为空,所以root_page_id肯定是有值的,因此可以根据root_page_id_拿到page
+  page_id_t page_id = root_page_id_;
+  // FetchPage + WLatch + AddIntoPageSet
+  Page *page_ptr = buffer_pool_manager_->FetchPage(page_id);
+  page_ptr->WLatch();
+  transaction->AddIntoPageSet(page_ptr);
+
+  // 一开始没法判断是leaf还是internal,所以都转换成internal
+  auto internal_page_ptr = reinterpret_cast<InternalPage *>(page_ptr->GetData());
+
+  // 如果是leaf,那就直接转换成leaf然后返回
+  while (!internal_page_ptr->IsLeafPage()) {
+    int i = 1;
+    int sz = internal_page_ptr->GetSize();
+    while (i <= sz && comparator_(internal_page_ptr->KeyAt(i), key) <= 0) {
+      i++;
+    }
+    page_id = internal_page_ptr->ValueAt(i - 1);
+
+    // FetchPage + WLatch + AddIntoPageSet
+    auto child_page_ptr = buffer_pool_manager_->FetchPage(page_id);
+    child_page_ptr->WLatch();
+    transaction->AddIntoPageSet(child_page_ptr);
+    auto internal_child_page_ptr = reinterpret_cast<InternalPage *>(child_page_ptr->GetData());
+
+    // if safe, then Pop + WUnlatch + UnpinPage
+    if (internal_child_page_ptr->GetSize() < internal_child_page_ptr->GetMaxSize() - 1) {
+      auto page_set = transaction->GetPageSet();
+      while (page_set->size() > 1) {
+        auto release_page_ptr = page_set->front();
+        page_set->pop_front();
+        release_page_ptr->WUnlatch();
+        buffer_pool_manager_->UnpinPage(release_page_ptr->GetPageId(), false);
+      }
+    }
+    internal_page_ptr = internal_child_page_ptr;
+    page_ptr = child_page_ptr;
+  }
+
+  auto *leaf_page_ptr = reinterpret_cast<LeafPage *>(internal_page_ptr);
+
+  // 如果只有在key是重复的情况下，会返回false，因此，当返回false的时候插入失败，返回false
   if (!leaf_page_ptr->Insert(key, value, comparator_)) {
-    // unpin
-    buffer_pool_manager_->UnpinPage(leaf_page_ptr->GetPageId(), false);
+    // 释放WUnlatch所有的锁，pop掉transaction中的deque，并进行unpin
+    auto page_set = transaction->GetPageSet();
+    while (!page_set->empty()) {
+      auto release_page_ptr = page_set->front();
+      page_set->pop_front();
+      release_page_ptr->WUnlatch();
+      buffer_pool_manager_->UnpinPage(release_page_ptr->GetPageId(), false);
+    }
     return false;
   }
-  // if size == maxsize, split the leaf;
+  // 判断叶子节点是不是满了，满了的话就要分裂，然后将分裂出来的节点插入到父亲节点，如果没有父亲节点，就要创建一个父亲节点，然后将原来的leaf和新的leaf的page_id，都插进去。
   if (leaf_page_ptr->GetSize() == leaf_page_ptr->GetMaxSize()) {
-    // 1. split leaf;
-    page_id_t new_page_id;
-    auto new_page = buffer_pool_manager_->NewPage(&new_page_id);
-    auto new_leaf_page_ptr = reinterpret_cast<LeafPage *>(new_page->GetData());
-    new_leaf_page_ptr->Init(new_page_id, leaf_page_ptr->GetParentPageId(), leaf_max_size_);
-    // split leaf into new leaf
-    auto mid_key = leaf_page_ptr->SplitInto(new_leaf_page_ptr);
-    // if current node is root page, create new internal page, set it to new root
-    if (leaf_page_ptr->IsRootPage()) {
-      // create new internal page, set to root_page_id
-      auto page = buffer_pool_manager_->NewPage(&root_page_id_);
-      UpdateRootPageId(0);
-      auto new_internal_page_ptr = reinterpret_cast<InternalPage *>(page->GetData());
-      new_internal_page_ptr->Init(root_page_id_, INVALID_PAGE_ID, internal_max_size_);
-      //
-      new_internal_page_ptr->SetValueAt(0, leaf_page_ptr->GetPageId());
-      new_internal_page_ptr->SetKeyAt(1, mid_key);
-      new_internal_page_ptr->SetValueAt(1, new_leaf_page_ptr->GetPageId());
-      new_internal_page_ptr->IncreaseSize(1);
-      //
-      leaf_page_ptr->SetParentPageId(root_page_id_);
-      new_leaf_page_ptr->SetParentPageId(root_page_id_);
+    // 创建一个新的leaf，init
+    page_id_t new_leaf_page_id;
+    Page *new_leaf_page = buffer_pool_manager_->NewPage(&new_leaf_page_id);
+    auto new_leaf_page_ptr = reinterpret_cast<LeafPage *>(new_leaf_page->GetData());
+    new_leaf_page_ptr->Init(new_leaf_page_id, leaf_page_ptr->GetParentPageId(), leaf_max_size_);
+    // 分裂叶子节点
+    KeyType mid_key = leaf_page_ptr->SplitInto(new_leaf_page_ptr);
 
-      // unpin
-      buffer_pool_manager_->UnpinPage(root_page_id_, true);
-      buffer_pool_manager_->UnpinPage(new_internal_page_ptr->GetPageId(), true);
-      buffer_pool_manager_->UnpinPage(leaf_page_ptr->GetPageId(), true);
+    // 如果当前叶子节点本身就是根节点， 那么就要创建父亲节点
+    if (leaf_page_ptr->IsRootPage()) {
+      // 此时，b+树的根节点的root_page_id_就转换成创建的新的internal的page_id
+      page_id_t new_root_page_id;
+      Page *root_page = buffer_pool_manager_->NewPage(&new_root_page_id);
+      // 这里创建的是一个父亲节点，那父亲节点一定是internalpage，因此强制转换过去
+      auto root_page_ptr = reinterpret_cast<InternalPage *>(root_page->GetData());
+      // 初始化，root_page_id，INVALID_PAGE_ID, internal_max_size_
+      root_page_ptr->Init(new_root_page_id, INVALID_PAGE_ID, internal_max_size_);
+      // 插入internal_page中,第0个位置的value是当前叶子节点的pageid,第一个位置的key是新分裂出来的leafpage的array的第一个key,第一个位置的value是新分裂的leafpage的page_id
+      root_page_ptr->SetValueAt(0, leaf_page_ptr->GetPageId());
+      root_page_ptr->SetKeyAt(1, mid_key);
+      root_page_ptr->SetValueAt(1, new_leaf_page_ptr->GetPageId());
+      root_page_ptr->IncreaseSize(1);
+      // 当前leafpage的parent_page_id都是新创建的internal_page_id
+      leaf_page_ptr->SetParentPageId(root_page_ptr->GetPageId());
+      new_leaf_page_ptr->SetParentPageId(root_page_ptr->GetPageId());
+      // 重置root_page_id
+      root_page_id_ = new_root_page_id;
+      // 然后更新headerpage中该b+树的page_id。
+      UpdateRootPageId(0);
+      // Pop + WUnlatch + UnpinPage
+      transaction->GetPageSet()->pop_front();
+      page_ptr->WUnlatch();
+      buffer_pool_manager_->UnpinPage(page_ptr->GetPageId(), true);
+      // 新建的root和new_leaf因为是局部的,所以unpin掉
+      buffer_pool_manager_->UnpinPage(new_leaf_page_ptr->GetPageId(), true);
+      buffer_pool_manager_->UnpinPage(root_page_ptr->GetPageId(), true);
+
       return true;
     }
+    // page_id_t leaf_page_parent_page_id = leaf_page_ptr->GetParentPageId();
+    page_id_t new_leaf_page_page_id = new_leaf_page_ptr->GetPageId();
 
+    // leaf插入成功了，也safe了，因此可以给leaf解锁了，也就是page_set的back
+    auto page_set = transaction->GetPageSet();
+    auto release_page_ptr = page_set->back();
+    page_set->pop_back();
+    release_page_ptr->WUnlatch();
+    // release_page_ptr就是leaf_page_ptr
+    buffer_pool_manager_->UnpinPage(release_page_ptr->GetPageId(), true);
     buffer_pool_manager_->UnpinPage(new_leaf_page_ptr->GetPageId(), true);
-    InsertIntoInternal(leaf_page_ptr->GetParentPageId(), mid_key, new_leaf_page_ptr->GetPageId());
-    // unpin
+    InsertIntoInternal(mid_key, new_leaf_page_page_id, transaction);
+  } else {
+    // 释放page_ptr的锁，pop掉page_ptr中的deque，并进行unpin
+    transaction->GetPageSet()->pop_front();
+    page_ptr->WUnlatch();
+    buffer_pool_manager_->UnpinPage(page_ptr->GetPageId(), true);
   }
-  buffer_pool_manager_->UnpinPage(leaf_page_ptr->GetPageId(), true);
+
   return true;
 }
 
 INDEX_TEMPLATE_ARGUMENTS
-void BPLUSTREE_TYPE::InsertIntoInternal(page_id_t parent_page_id, const KeyType &key, const page_id_t &value) {
-  auto internal_page = buffer_pool_manager_->FetchPage(parent_page_id);
+void BPLUSTREE_TYPE::InsertIntoInternal(const KeyType &key, const page_id_t &value, Transaction *transaction) {
+  // 获取要插入的parent_page，是一个internalpage
+  auto internal_page = transaction->GetPageSet()->back();
   auto internal_page_ptr = reinterpret_cast<InternalPage *>(internal_page->GetData());
+  // 插入
   internal_page_ptr->Insert(key, value, comparator_);
 
+  // 如果满了的话,就分裂.没有的话直接返回internal_page的page_id
   if (internal_page_ptr->GetSize() == internal_page_ptr->GetMaxSize()) {
-    // if full, split
+    // 创建一个新的internal，init
     page_id_t new_internal_page_id;
-    auto new_internal_page = buffer_pool_manager_->NewPage(&new_internal_page_id);
+    Page *new_internal_page = buffer_pool_manager_->NewPage(&new_internal_page_id);
     auto new_internal_page_ptr = reinterpret_cast<InternalPage *>(new_internal_page->GetData());
     new_internal_page_ptr->Init(new_internal_page_id, internal_page_ptr->GetParentPageId(), internal_max_size_);
-    auto mid_key = internal_page_ptr->SplitInto(new_internal_page_ptr);
+    // 分裂internal节点，得到需要插入该internal父亲节点的key
+    KeyType mid_key = internal_page_ptr->SplitInto(new_internal_page_ptr);
 
-    // redistribute new_internal;
+    // *****************更新new_internal_page_ptr的所有孩子节点的parent_page_id
     int sz = new_internal_page_ptr->GetSize();
     for (int i = 0; i <= sz; i++) {
-      auto child_page = buffer_pool_manager_->FetchPage(new_internal_page_ptr->ValueAt(i));
+      Page *child_page = buffer_pool_manager_->FetchPage(new_internal_page_ptr->ValueAt(i));
+      child_page->WLatch();
       auto child_page_ptr = reinterpret_cast<BPlusTreePage *>(child_page->GetData());
       child_page_ptr->SetParentPageId(new_internal_page_ptr->GetPageId());
-      buffer_pool_manager_->UnpinPage(child_page->GetPageId(), true);
+      // Unpin
+      child_page->WUnlatch();
+      buffer_pool_manager_->UnpinPage(child_page_ptr->GetPageId(), true);
     }
+    // *****************
+
+    // 如果当前internal节点本身是根节点， 那么就要创建父亲节点
     if (internal_page_ptr->IsRootPage()) {
-      auto new_root_page = buffer_pool_manager_->NewPage(&root_page_id_);
-      UpdateRootPageId(0);
-      auto root_page_ptr = reinterpret_cast<InternalPage *>(new_root_page->GetData());
-      root_page_ptr->Init(root_page_id_, INVALID_PAGE_ID, internal_max_size_);
+      // 此时，b+树的根节点的root_page_id_就转换成创建的新的internal的page_id
+      page_id_t new_root_page_id;
+      Page *root_page = buffer_pool_manager_->NewPage(&new_root_page_id);
+      // 这里创建的是一个父亲节点，那父亲节点一定是internalpage，因此强制转换过去
+      auto root_page_ptr = reinterpret_cast<InternalPage *>(root_page->GetData());
+      // 初始化，root_page_id，INVALID_PAGE_ID, internal_max_size_
+      root_page_ptr->Init(new_root_page_id, INVALID_PAGE_ID, internal_max_size_);
+      // 插入internal_page中,第0个位置的value是当前internal节点的pageid,第一个位置的key是mid_key,第一个位置的value是新分裂的internal的page_id
       root_page_ptr->SetValueAt(0, internal_page_ptr->GetPageId());
       root_page_ptr->SetKeyAt(1, mid_key);
       root_page_ptr->SetValueAt(1, new_internal_page_ptr->GetPageId());
-      root_page_ptr->SetSize(1);
-      internal_page_ptr->SetParentPageId(root_page_id_);
-      new_internal_page_ptr->SetParentPageId(root_page_id_);
-      buffer_pool_manager_->UnpinPage(root_page_id_, true);
-      buffer_pool_manager_->UnpinPage(new_root_page->GetPageId(), true);
-      buffer_pool_manager_->UnpinPage(internal_page_ptr->GetPageId(), true);
-      return;
+      root_page_ptr->IncreaseSize(1);
+      // 当前leafpage的parent_page_id都是新创建的internal_page_id
+      internal_page_ptr->SetParentPageId(root_page_ptr->GetPageId());
+      new_internal_page_ptr->SetParentPageId(root_page_ptr->GetPageId());
+      root_page_id_ = new_root_page_id;
+      // 然后更新headerpage中该b+树的page_id。
+      UpdateRootPageId(0);
+      // Pop + WUnlatch + UnpinPage
+      transaction->GetPageSet()->pop_front();
+      internal_page->WUnlatch();
+      buffer_pool_manager_->UnpinPage(internal_page->GetPageId(), true);
+      // 新建的root和new_leaf因为是局部的,所以unpin掉
+      buffer_pool_manager_->UnpinPage(new_internal_page_ptr->GetPageId(), true);
+      buffer_pool_manager_->UnpinPage(root_page_ptr->GetPageId(), true);
+    } else {
+      // 递归调用插入
+      // page_id_t leaf_page_parent_page_id = internal_page_ptr->GetParentPageId();
+      page_id_t new_internal_page_id = new_internal_page_ptr->GetPageId();
+
+      // internal插入成功了，也safe了，因此可以给internal解锁了，也就是page_set的back
+      auto page_set = transaction->GetPageSet();
+      auto release_page_ptr = page_set->back();
+      page_set->pop_back();
+      release_page_ptr->WUnlatch();
+      // release_page_ptr就是internal_page_ptr
+      buffer_pool_manager_->UnpinPage(release_page_ptr->GetPageId(), true);
+      buffer_pool_manager_->UnpinPage(new_internal_page_ptr->GetPageId(), true);
+      InsertIntoInternal(mid_key, new_internal_page_id, transaction);
     }
-    page_id_t leaf_page_parent_page_id = internal_page_ptr->GetParentPageId();
-    page_id_t new_leaf_page_page_id = new_internal_page_ptr->GetPageId();
-    buffer_pool_manager_->UnpinPage(internal_page_ptr->GetPageId(), true);
-    buffer_pool_manager_->UnpinPage(new_internal_page_ptr->GetPageId(), true);
-    InsertIntoInternal(leaf_page_parent_page_id, mid_key, new_leaf_page_page_id);
+  } else {
+    // Pop + WUnlatch + UnpinPage
+    transaction->GetPageSet()->pop_front();
+    internal_page->WUnlatch();
+    buffer_pool_manager_->UnpinPage(internal_page->GetPageId(), true);
   }
-  buffer_pool_manager_->UnpinPage(internal_page_ptr->GetPageId(), true);
 }
+
 /*****************************************************************************
  * REMOVE
  *****************************************************************************/
@@ -199,15 +341,18 @@ void BPLUSTREE_TYPE::InsertIntoInternal(page_id_t parent_page_id, const KeyType 
  * delete entry from leaf page. Remember to deal with redistribute or merge if
  * necessary.
  */
-INDEX_TEMPLATE_ARGUMENTS
-void BPLUSTREE_TYPE::Remove(const KeyType &key, Transaction *transaction) {
+INDEX_TEMPLATE_ARGUMENTS void BPLUSTREE_TYPE::Remove(const KeyType &key, Transaction *transaction) {
+  // 空的话直接返回
   if (IsEmpty()) {
     return;
   }
-  auto leaf_page_ptr = FindLeaf(key);
+  // 向下递归，找到对应leaf
+  LeafPage *leaf_page_ptr = FindLeaf(key);
   if (!leaf_page_ptr->Remove(key, comparator_)) {
     buffer_pool_manager_->UnpinPage(leaf_page_ptr->GetPageId(), false);
+    return;
   }
+  // 如果是根节点，leafpage
   if (leaf_page_ptr->IsRootPage()) {
     if (leaf_page_ptr->GetSize() == 0) {
       buffer_pool_manager_->UnpinPage(root_page_id_, true);
@@ -219,94 +364,118 @@ void BPLUSTREE_TYPE::Remove(const KeyType &key, Transaction *transaction) {
     }
     return;
   }
-
-  if (leaf_page_ptr->GetSize() < leaf_page_ptr->GetMaxSize()) {
+  // 判断删掉对应key的leafpage的size是否小于一半
+  if (leaf_page_ptr->GetSize() < leaf_page_ptr->GetMinSize()) {
     page_id_t parent_page_id = leaf_page_ptr->GetParentPageId();
-    auto parent_page = buffer_pool_manager_->FetchPage(parent_page_id);
-    auto parent_page_ptr = reinterpret_cast<InternalPage *>(parent_page);
+    Page *parent_page = buffer_pool_manager_->FetchPage(parent_page_id);
+    auto parent_page_ptr = reinterpret_cast<InternalPage *>(parent_page->GetData());
+    // 遍历找到了key
+    // brother_page_id, is_left, 自己(兄弟)在parent中夹着的key对应的index后续要用    ()V K V K V K V
+    // 如果我是leaf：如果是偷，那么就是直接改，如果是合并，那么就是直接删除。
+    // 如果是是internal：如果是偷，那么也需要改，如果是合并，那要把对应的index移到下面来
+    page_id_t brother_page_id;
     bool is_left = true;
     int index;
-    page_id_t brother_page_id;
     std::tie(index, brother_page_id) =
         parent_page_ptr->GetAdjacentBrother(leaf_page_ptr->KeyAt(0), is_left, comparator_);
-    auto brother_page = buffer_pool_manager_->FetchPage(brother_page_id);
-    auto brother_page_ptr = reinterpret_cast<LeafPage *>(brother_page->GetData());
+    Page *brother_page = buffer_pool_manager_->FetchPage(brother_page_id);
 
+    auto *brother_page_ptr = reinterpret_cast<LeafPage *>(brother_page->GetData());
+    // 能Steal
     if (brother_page_ptr->GetSize() > brother_page_ptr->GetMinSize()) {
       leaf_page_ptr->StealFrom(brother_page_ptr, is_left);
+      // 更新parent中对应index的key，根据is_left来传leaf或者brother的keyAt(0)
       parent_page_ptr->SetKeyAt(index, is_left ? leaf_page_ptr->KeyAt(0) : brother_page_ptr->KeyAt(0));
 
-      buffer_pool_manager_->UnpinPage(parent_page_ptr->GetPageId(), false);
+      buffer_pool_manager_->UnpinPage(parent_page_ptr->GetPageId(), true);
       buffer_pool_manager_->UnpinPage(leaf_page_ptr->GetPageId(), true);
       buffer_pool_manager_->UnpinPage(brother_page_ptr->GetPageId(), true);
       return;
     }
-    //
+    // 合并 leaf在右，brother在左
     if (!is_left) {
       std::swap(leaf_page_ptr, brother_page_ptr);
     }
+    // index 删除
     parent_page_ptr->RemoveAt(index);
     brother_page_ptr->ConcatWith(leaf_page_ptr);
-
     buffer_pool_manager_->UnpinPage(leaf_page_ptr->GetPageId(), true);
     buffer_pool_manager_->DeletePage(leaf_page_ptr->GetPageId());
     buffer_pool_manager_->UnpinPage(brother_page_ptr->GetPageId(), true);
     buffer_pool_manager_->UnpinPage(parent_page_ptr->GetPageId(), true);
+
     CheckParent(parent_page_id);
+  } else {
+    buffer_pool_manager_->UnpinPage(leaf_page_ptr->GetPageId(), true);
   }
 }
-
 INDEX_TEMPLATE_ARGUMENTS
-void BPLUSTREE_TYPE::CheckParent(page_id_t parent_page_id) {
-  auto internal_page = buffer_pool_manager_->FetchPage(parent_page_id);
+void BPLUSTREE_TYPE::CheckParent(page_id_t internal_page_id) {
+  Page *internal_page = buffer_pool_manager_->FetchPage(internal_page_id);
   auto internal_page_ptr = reinterpret_cast<InternalPage *>(internal_page->GetData());
   if (internal_page_ptr->IsRootPage()) {
     if (internal_page_ptr->GetSize() == 0) {
-      auto new_root_page_id = internal_page_ptr->ValueAt(0);
-      auto new_root_page = buffer_pool_manager_->FetchPage(new_root_page_id);
+      page_id_t new_root_page_id = internal_page_ptr->ValueAt(0);
+      Page *new_root_page = buffer_pool_manager_->FetchPage(new_root_page_id);
       auto new_root_page_ptr = reinterpret_cast<InternalPage *>(new_root_page->GetData());
       new_root_page_ptr->SetParentPageId(INVALID_PAGE_ID);
       buffer_pool_manager_->UnpinPage(new_root_page_id, true);
+
       root_page_id_ = new_root_page_id;
       UpdateRootPageId(0);
       buffer_pool_manager_->UnpinPage(internal_page_ptr->GetPageId(), false);
       buffer_pool_manager_->DeletePage(internal_page_ptr->GetPageId());
-      return;
+    } else {
+      buffer_pool_manager_->UnpinPage(internal_page_ptr->GetPageId(), false);
     }
-    buffer_pool_manager_->UnpinPage(internal_page_ptr->GetPageId(), false);
     return;
   }
 
   if (internal_page_ptr->GetSize() < internal_page_ptr->GetMinSize()) {
     page_id_t parent_page_id = internal_page_ptr->GetParentPageId();
-
-    auto parent_page = buffer_pool_manager_->FetchPage(parent_page_id);
-    auto parent_page_ptr = reinterpret_cast<InternalPage *>(parent_page);
+    Page *parent_page = buffer_pool_manager_->FetchPage(parent_page_id);
+    auto parent_page_ptr = reinterpret_cast<InternalPage *>(parent_page->GetData());
+    // 找到brother
+    page_id_t brother_page_id;
     bool is_left = true;
     int index;
-    page_id_t brother_page_id;
     std::tie(index, brother_page_id) =
         parent_page_ptr->GetAdjacentBrother(internal_page_ptr->KeyAt(1), is_left, comparator_);
-    auto brother_page = buffer_pool_manager_->FetchPage(brother_page_id);
-    auto brother_page_ptr = reinterpret_cast<InternalPage *>(brother_page->GetData());
+    Page *brother_page = buffer_pool_manager_->FetchPage(brother_page_id);
+    auto *brother_page_ptr = reinterpret_cast<InternalPage *>(brother_page->GetData());
 
+    // brother很胖
     if (brother_page_ptr->GetSize() > brother_page_ptr->GetMinSize()) {
       if (is_left) {
-        internal_page_ptr->StealFromLeft(brother_page_ptr, parent_page_ptr, is_left, buffer_pool_manager_);
+        internal_page_ptr->StealFromLeft(brother_page_ptr, parent_page_ptr, index, buffer_pool_manager_);
       } else {
-        internal_page_ptr->StealFromRight(brother_page_ptr, parent_page_ptr, is_left, buffer_pool_manager_);
+        internal_page_ptr->StealFromRight(brother_page_ptr, parent_page_ptr, index, buffer_pool_manager_);
       }
-      brother_page_ptr->ConcatWith(internal_page_ptr, parent_page_ptr->KeyAt(index), buffer_pool_manager_);
-      parent_page_ptr->RemoveAt(index);
 
-      buffer_pool_manager_->UnpinPage(internal_page_ptr->GetPageId(), true);
-      buffer_pool_manager_->DeletePage(internal_page_ptr->GetPageId());
       buffer_pool_manager_->UnpinPage(parent_page_ptr->GetPageId(), true);
+      buffer_pool_manager_->UnpinPage(internal_page_ptr->GetPageId(), true);
       buffer_pool_manager_->UnpinPage(brother_page_ptr->GetPageId(), true);
       return;
     }
+    // 合并 leaf在右，brother在左
+    if (!is_left) {
+      std::swap(internal_page_ptr, brother_page_ptr);
+    }
+
+    // index 下移
+    brother_page_ptr->ConcatWith(internal_page_ptr, parent_page_ptr->KeyAt(index), buffer_pool_manager_);
+    parent_page_ptr->RemoveAt(index);
+    buffer_pool_manager_->UnpinPage(internal_page_ptr->GetPageId(), true);
+    buffer_pool_manager_->DeletePage(internal_page_ptr->GetPageId());
+    buffer_pool_manager_->UnpinPage(brother_page_ptr->GetPageId(), true);
+    buffer_pool_manager_->UnpinPage(parent_page_ptr->GetPageId(), true);
+
+    CheckParent(parent_page_id);
+  } else {
+    buffer_pool_manager_->UnpinPage(internal_page_ptr->GetPageId(), false);
   }
 }
+
 /*****************************************************************************
  * INDEX ITERATOR
  *****************************************************************************/
@@ -318,14 +487,21 @@ void BPLUSTREE_TYPE::CheckParent(page_id_t parent_page_id) {
 INDEX_TEMPLATE_ARGUMENTS
 auto BPLUSTREE_TYPE::Begin() -> INDEXITERATOR_TYPE {
   page_id_t page_id = root_page_id_;
-  auto page_ptr = buffer_pool_manager_->FetchPage(page_id);
+  Page *page_ptr = buffer_pool_manager_->FetchPage(page_id);
+  // 一开始没法判断是leaf还是internal,所以都转换成internal
   auto internal_page_ptr = reinterpret_cast<InternalPage *>(page_ptr->GetData());
+
+  // 如果是leaf,那就直接转换成leaf然后返回
   while (!internal_page_ptr->IsLeafPage()) {
     page_id = internal_page_ptr->ValueAt(0);
-    buffer_pool_manager_->UnpinPage(internal_page_ptr->GetPageId(), false);
+    // UnpinPage
+    buffer_pool_manager_->UnpinPage(page_ptr->GetPageId(), false);
     page_ptr = buffer_pool_manager_->FetchPage(page_id);
     internal_page_ptr = reinterpret_cast<InternalPage *>(page_ptr->GetData());
   }
+  page_id = internal_page_ptr->GetPageId();
+  buffer_pool_manager_->UnpinPage(page_id, false);
+
   return INDEXITERATOR_TYPE(page_id, 0, buffer_pool_manager_);
 }
 
@@ -336,13 +512,18 @@ auto BPLUSTREE_TYPE::Begin() -> INDEXITERATOR_TYPE {
  */
 INDEX_TEMPLATE_ARGUMENTS
 auto BPLUSTREE_TYPE::Begin(const KeyType &key) -> INDEXITERATOR_TYPE {
-  auto leaf_page_ptr = FindLeaf(key);
-  int index = 0;
-  while (comparator_(leaf_page_ptr->KeyAt(index), key) != 0) {
-    index++;
+  LeafPage *leaf_page_ptr = FindLeaf(key);
+  int sz = leaf_page_ptr->GetSize();
+  int i;
+  for (i = 0; i < sz; i++) {
+    if (comparator_(leaf_page_ptr->KeyAt(i), key) == 0) {
+      break;
+    }
   }
-  buffer_pool_manager_->UnpinPage(leaf_page_ptr->GetPageId(), false);
-  return INDEXITERATOR_TYPE(leaf_page_ptr->GetPageId(), index, buffer_pool_manager_);
+  page_id_t page_id = leaf_page_ptr->GetPageId();
+  buffer_pool_manager_->UnpinPage(page_id, false);
+
+  return INDEXITERATOR_TYPE(page_id, i, buffer_pool_manager_);
 }
 
 /*
@@ -353,15 +534,23 @@ auto BPLUSTREE_TYPE::Begin(const KeyType &key) -> INDEXITERATOR_TYPE {
 INDEX_TEMPLATE_ARGUMENTS
 auto BPLUSTREE_TYPE::End() -> INDEXITERATOR_TYPE {
   page_id_t page_id = root_page_id_;
-  auto page_ptr = buffer_pool_manager_->FetchPage(page_id);
+  Page *page_ptr = buffer_pool_manager_->FetchPage(page_id);
+  // 一开始没法判断是leaf还是internal,所以都转换成internal
   auto internal_page_ptr = reinterpret_cast<InternalPage *>(page_ptr->GetData());
+
+  // 如果是leaf,那就直接转换成leaf然后返回
   while (!internal_page_ptr->IsLeafPage()) {
     page_id = internal_page_ptr->ValueAt(internal_page_ptr->GetSize());
-    buffer_pool_manager_->UnpinPage(internal_page_ptr->GetPageId(), false);
+    // UnpinPage
+    buffer_pool_manager_->UnpinPage(page_ptr->GetPageId(), false);
     page_ptr = buffer_pool_manager_->FetchPage(page_id);
     internal_page_ptr = reinterpret_cast<InternalPage *>(page_ptr->GetData());
   }
-  return INDEXITERATOR_TYPE(page_id, internal_page_ptr->GetSize(), buffer_pool_manager_);
+  page_id = internal_page_ptr->GetPageId();
+  int sz = internal_page_ptr->GetSize();
+  buffer_pool_manager_->UnpinPage(page_id, false);
+
+  return INDEXITERATOR_TYPE(page_id, sz, buffer_pool_manager_);
 }
 
 /**
