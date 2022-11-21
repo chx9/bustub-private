@@ -55,11 +55,14 @@ class BPlusTree {
   auto GetValue(const KeyType &key, std::vector<ValueType> *result, Transaction *transaction = nullptr) -> bool;
 
   auto FindLeaf(const KeyType &key, Transaction *transaction = nullptr) -> LeafPage *;
-
+  auto FindLeafPage(const KeyType &key, bool is_shared, Transaction *transaction = nullptr) -> LeafPage *;
   void InsertIntoInternal(const KeyType &key, const page_id_t &value, Transaction *transaction = nullptr);
 
   void CheckParent(page_id_t internal_page_id);
 
+  void LockRootPageId(bool is_shared);
+  void UnlockRootPageId(bool is_shared);
+  auto CrabingFetchPage(page_id_t page_id, page_id_t previous, bool is_shared, ) 
   // return the page id of the root node
   auto GetRootPageId() -> page_id_t;
 
@@ -93,6 +96,7 @@ class BPlusTree {
   page_id_t root_page_id_;
   BufferPoolManager *buffer_pool_manager_;
   KeyComparator comparator_;
+  ReaderWriterLatch latch_;
   int leaf_max_size_;
   int internal_max_size_;
 };

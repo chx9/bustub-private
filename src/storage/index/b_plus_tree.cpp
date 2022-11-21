@@ -30,56 +30,76 @@ auto BPLUSTREE_TYPE::IsEmpty() const -> bool { return root_page_id_ == INVALID_P
  * This method is used for point query
  * @return : true means key exists
  */
+
 INDEX_TEMPLATE_ARGUMENTS
 auto BPLUSTREE_TYPE::GetValue(const KeyType &key, std::vector<ValueType> *result, Transaction *transaction) -> bool {
-  // 空的话返回false
-  if (IsEmpty()) {
+  if (transaction == nullptr) {
+    transaction = new Transaction(0);
+  }
+  auto leaf_page_ptr = FindLeafPage(key, false, transaction);
+  if (leaf_page_ptr == nullptr) {
     return false;
   }
-
-  // 根据key找到对应的leafpage
-  page_id_t page_id = root_page_id_;
-  // FetchPage + RLatch
-  Page *page_ptr = buffer_pool_manager_->FetchPage(page_id);
-  page_ptr->RLatch();
-  // 一开始没法判断是leaf还是internal,所以都转换成internal
-  auto internal_page_ptr = reinterpret_cast<InternalPage *>(page_ptr->GetData());
-
-  // 如果是leaf,那就直接转换成leaf然后返回
-  while (!internal_page_ptr->IsLeafPage()) {
-    int i = 1;
-    int sz = internal_page_ptr->GetSize();
-    while (i <= sz && comparator_(internal_page_ptr->KeyAt(i), key) <= 0) {
-      i++;
-    }
-    page_id = internal_page_ptr->ValueAt(i - 1);
-    // RUnlatch + UnpinPage
-    page_ptr->RUnlatch();
-    buffer_pool_manager_->UnpinPage(page_ptr->GetPageId(), false);
-    // FetchPage + RLatch
-    page_ptr = buffer_pool_manager_->FetchPage(page_id);
-    page_ptr->RLatch();
-
-    internal_page_ptr = reinterpret_cast<InternalPage *>(page_ptr->GetData());
+  return true;
+}
+INDEX_TEMPLATE_ARGUMENTS
+auto BPLUSTREE_TYPE::FindLeafPage(const KeyType &key, bool is_shared, Transaction *transaction) -> LeafPage * {
+  LockRootPageId(is_shared);
+  if (IsEmpty()) {
+    return nullptr;
   }
-
-  auto leaf_page_ptr = reinterpret_cast<LeafPage *>(internal_page_ptr);
-  // 在leafpage中根据key找到value,O(n)复杂度,遍历完如果没找到,那就最后返回false
-  int sz = leaf_page_ptr->GetSize();
-  for (int i = 0; i < sz; i++) {
-    if (comparator_(leaf_page_ptr->KeyAt(i), key) == 0) {
-      result->emplace_back(leaf_page_ptr->ValueAt(i));
-      // RUnlatch + UnpinPage
-      page_ptr->RUnlatch();
-      buffer_pool_manager_->UnpinPage(leaf_page_ptr->GetPageId(), false);
-      return true;
-    }
-  }
-  page_ptr->RUnlatch();
-  buffer_pool_manager_->UnpinPage(leaf_page_ptr->GetPageId(), false);
-  return false;
+  return nullptr;
 }
 
+// INDEX_TEMPLATE_ARGUMENTS
+// auto BPLUSTREE_TYPE::GetValue(const KeyType &key, std::vector<ValueType> *result, Transaction *transaction) -> bool {
+//   // 空的话返回false
+//   if (IsEmpty()) {
+//     return false;
+//   }
+
+//   // 根据key找到对应的leafpage
+//   page_id_t page_id = root_page_id_;
+//   // FetchPage + RLatch
+//   Page *page_ptr = buffer_pool_manager_->FetchPage(page_id);
+//   page_ptr->RLatch();
+//   // 一开始没法判断是leaf还是internal,所以都转换成internal
+//   auto internal_page_ptr = reinterpret_cast<InternalPage *>(page_ptr->GetData());
+
+//   // 如果是leaf,那就直接转换成leaf然后返回
+//   while (!internal_page_ptr->IsLeafPage()) {
+//     int i = 1;
+//     int sz = internal_page_ptr->GetSize();
+//     while (i <= sz && comparator_(internal_page_ptr->KeyAt(i), key) <= 0) {
+//       i++;
+//     }
+//     page_id = internal_page_ptr->ValueAt(i - 1);
+//     // RUnlatch + UnpinPage
+//     page_ptr->RUnlatch();
+//     buffer_pool_manager_->UnpinPage(page_ptr->GetPageId(), false);
+//     // FetchPage + RLatch
+//     page_ptr = buffer_pool_manager_->FetchPage(page_id);
+//     page_ptr->RLatch();
+
+//     internal_page_ptr = reinterpret_cast<InternalPage *>(page_ptr->GetData());
+//   }
+
+//   auto leaf_page_ptr = reinterpret_cast<LeafPage *>(internal_page_ptr);
+//   // 在leafpage中根据key找到value,O(n)复杂度,遍历完如果没找到,那就最后返回false
+//   int sz = leaf_page_ptr->GetSize();
+//   for (int i = 0; i < sz; i++) {
+//     if (comparator_(leaf_page_ptr->KeyAt(i), key) == 0) {
+//       result->emplace_back(leaf_page_ptr->ValueAt(i));
+//       // RUnlatch + UnpinPage
+//       page_ptr->RUnlatch();
+//       buffer_pool_manager_->UnpinPage(leaf_page_ptr->GetPageId(), false);
+//       return true;
+//     }
+//   }
+//   page_ptr->RUnlatch();
+//   buffer_pool_manager_->UnpinPage(leaf_page_ptr->GetPageId(), false);
+//   return false;
+// }
 INDEX_TEMPLATE_ARGUMENTS
 auto BPLUSTREE_TYPE::FindLeaf(const KeyType &key, Transaction *transaction) -> LeafPage * {
   // 因为前面判断了是否为空,所以root_page_id肯定是有值的,因此可以根据root_page_id_拿到page
@@ -104,7 +124,6 @@ auto BPLUSTREE_TYPE::FindLeaf(const KeyType &key, Transaction *transaction) -> L
 
   return reinterpret_cast<LeafPage *>(internal_page_ptr);
 }
-
 /*****************************************************************************
  * INSERTION
  *****************************************************************************/
@@ -476,6 +495,23 @@ void BPLUSTREE_TYPE::CheckParent(page_id_t internal_page_id) {
   }
 }
 
+INDEX_TEMPLATE_ARGUMENTS
+void BPLUSTREE_TYPE::LockRootPageId(bool is_shared) {
+  if (is_shared) {
+    latch_.RLock();
+  } else {
+    latch_.WUnlock();
+  }
+}
+
+INDEX_TEMPLATE_ARGUMENTS
+void BPLUSTREE_TYPE::UnlockRootPageId(bool is_shared) {
+  if (is_shared) {
+    latch_.RUnlock();
+  } else {
+    latch_.WUnlock();
+  }
+}
 /*****************************************************************************
  * INDEX ITERATOR
  *****************************************************************************/
