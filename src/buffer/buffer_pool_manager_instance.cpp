@@ -170,9 +170,9 @@ auto BufferPoolManagerInstance::UnpinPgImp(page_id_t page_id, bool is_dirty) -> 
   if (pages_[frame_id].pin_count_ == 0) {
     replacer_->SetEvictable(frame_id, true);
     // Also, set the dirty flag on the page to indicate if the page was modified.
-    if (is_dirty) {
-      pages_[frame_id].is_dirty_ = true;
-    }
+  }
+  if (!pages_[frame_id].is_dirty_) {
+    pages_[frame_id].is_dirty_ = is_dirty;
   }
   latch_.unlock();
   return true;

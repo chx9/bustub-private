@@ -60,9 +60,6 @@ class BPlusTree {
 
   void CheckParent(page_id_t internal_page_id);
 
-  void LockRootPageId(bool is_shared);
-  void UnlockRootPageId(bool is_shared);
-  auto CrabingFetchPage(page_id_t page_id, page_id_t previous, bool is_shared, ) 
   // return the page id of the root node
   auto GetRootPageId() -> page_id_t;
 
