@@ -14,6 +14,7 @@
 #include <string>
 #include <vector>
 
+#include "common/rwlatch.h"
 #include "concurrency/transaction.h"
 #include "storage/index/index_iterator.h"
 #include "storage/page/b_plus_tree_internal_page.h"
@@ -55,8 +56,9 @@ class BPlusTree {
   auto GetValue(const KeyType &key, std::vector<ValueType> *result, Transaction *transaction = nullptr) -> bool;
 
   auto FindLeaf(const KeyType &key, Transaction *transaction = nullptr) -> LeafPage *;
-  auto FindLeafPage(const KeyType &key, bool is_shared, Transaction *transaction = nullptr) -> LeafPage *;
-  void InsertIntoInternal(const KeyType &key, const page_id_t &value, Transaction *transaction = nullptr);
+
+  void InsertIntoInternal(const page_id_t &parent_page_id, const KeyType &key, const page_id_t &value,
+                          Transaction *transaction = nullptr);
 
   void CheckParent(page_id_t internal_page_id);
 
@@ -93,9 +95,10 @@ class BPlusTree {
   page_id_t root_page_id_;
   BufferPoolManager *buffer_pool_manager_;
   KeyComparator comparator_;
-  ReaderWriterLatch latch_;
   int leaf_max_size_;
   int internal_max_size_;
+
+  ReaderWriterLatch rwlatch_;
 };
 
 }  // namespace bustub
