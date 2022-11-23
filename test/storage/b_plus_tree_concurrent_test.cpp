@@ -16,6 +16,7 @@
 #include <thread>  // NOLINT
 
 #include "buffer/buffer_pool_manager_instance.h"
+#include "common/logger.h"
 #include "gtest/gtest.h"
 #include "storage/index/b_plus_tree.h"
 #include "test_util.h"  // NOLINT
@@ -108,7 +109,7 @@ TEST(BPlusTreeConcurrentTest, InsertTest1) {
   auto *disk_manager = new DiskManager("test.db");
   BufferPoolManager *bpm = new BufferPoolManagerInstance(50, disk_manager);
   // create b+ tree
-  BPlusTree<GenericKey<8>, RID, GenericComparator<8>> tree("foo_pk", bpm, comparator);
+  BPlusTree<GenericKey<8>, RID, GenericComparator<8>> tree("foo_pk", bpm, comparator, 5, 3);
   // create and fetch header_page
   page_id_t page_id;
   auto header_page = bpm->NewPage(&page_id);
@@ -133,6 +134,7 @@ TEST(BPlusTreeConcurrentTest, InsertTest1) {
     EXPECT_EQ(rids[0].GetSlotNum(), value);
   }
 
+  tree.Draw(bpm, "my-tree.dot");
   int64_t start_key = 1;
   int64_t current_key = start_key;
   index_key.SetFromInteger(start_key);
@@ -203,7 +205,7 @@ TEST(BPlusTreeConcurrentTest, InsertTest2) {
   remove("test.log");
 }
 
-TEST(BPlusTreeConcurrentTest, DISABLED_DeleteTest1) {
+TEST(BPlusTreeConcurrentTest, DeleteTest1) {
   // create KeyComparator and index schema
   auto key_schema = ParseCreateStatement("a bigint");
   GenericComparator<8> comparator(key_schema.get());
@@ -211,32 +213,48 @@ TEST(BPlusTreeConcurrentTest, DISABLED_DeleteTest1) {
   auto *disk_manager = new DiskManager("test.db");
   BufferPoolManager *bpm = new BufferPoolManagerInstance(50, disk_manager);
   // create b+ tree
-  BPlusTree<GenericKey<8>, RID, GenericComparator<8>> tree("foo_pk", bpm, comparator);
+  BPlusTree<GenericKey<8>, RID, GenericComparator<8>> tree("foo_pk", bpm, comparator, 5, 3);
   GenericKey<8> index_key;
   // create and fetch header_page
   page_id_t page_id;
   auto header_page = bpm->NewPage(&page_id);
   (void)header_page;
   // sequential insert
-  std::vector<int64_t> keys = {1, 2, 3, 4, 5};
+  std::vector<int64_t> keys;
+  int64_t scale_factor = 200;
+  for (int64_t key = 1; key < scale_factor; key++) {
+    keys.push_back(key);
+  }
   InsertHelper(&tree, keys);
+  // tree.Draw(bpm, "my-tree.dot");
+  std::vector<int64_t> remove_keys;
+  std::vector<int64_t> remain_keys;
 
-  std::vector<int64_t> remove_keys = {1, 5, 3, 4};
-  LaunchParallelTest(2, DeleteHelper, &tree, remove_keys);
+  for (int64_t &key : keys) {
+    if (static_cast<bool>(rand() % 2)) {
+      remove_keys.emplace_back(key);
+    } else {
+      remain_keys.emplace_back(key);
+    }
+  }
+  LOG_INFO("remain_keys.size() = %ld", remain_keys.size());
 
-  int64_t start_key = 2;
-  int64_t current_key = start_key;
+  LaunchParallelTest(4, DeleteHelper, &tree, remove_keys);
+  LOG_INFO("DELETED");
+  int64_t start_key = remain_keys[0];
+  int64_t i = 0;
   int64_t size = 0;
   index_key.SetFromInteger(start_key);
+  tree.Draw(bpm, "my-tree.dot");
   for (auto iterator = tree.Begin(index_key); iterator != tree.End(); ++iterator) {
     auto location = (*iterator).second;
     EXPECT_EQ(location.GetPageId(), 0);
-    EXPECT_EQ(location.GetSlotNum(), current_key);
-    current_key = current_key + 1;
-    size = size + 1;
+    EXPECT_EQ(location.GetSlotNum(), remain_keys[i]);
+    i++;
+    size++;
   }
 
-  EXPECT_EQ(size, 1);
+  EXPECT_EQ(size, remain_keys.size());
 
   bpm->UnpinPage(HEADER_PAGE_ID, true);
   delete disk_manager;
@@ -245,7 +263,7 @@ TEST(BPlusTreeConcurrentTest, DISABLED_DeleteTest1) {
   remove("test.log");
 }
 
-TEST(BPlusTreeConcurrentTest, DISABLED_DeleteTest2) {
+TEST(BPlusTreeConcurrentTest, DeleteTest2) {
   // create KeyComparator and index schema
   auto key_schema = ParseCreateStatement("a bigint");
   GenericComparator<8> comparator(key_schema.get());
@@ -288,7 +306,7 @@ TEST(BPlusTreeConcurrentTest, DISABLED_DeleteTest2) {
   remove("test.log");
 }
 
-TEST(BPlusTreeConcurrentTest, DISABLED_MixTest) {
+TEST(BPlusTreeConcurrentTest, MixTest) {
   // create KeyComparator and index schema
   auto key_schema = ParseCreateStatement("a bigint");
   GenericComparator<8> comparator(key_schema.get());
@@ -296,7 +314,7 @@ TEST(BPlusTreeConcurrentTest, DISABLED_MixTest) {
   auto *disk_manager = new DiskManager("test.db");
   BufferPoolManager *bpm = new BufferPoolManagerInstance(50, disk_manager);
   // create b+ tree
-  BPlusTree<GenericKey<8>, RID, GenericComparator<8>> tree("foo_pk", bpm, comparator);
+  BPlusTree<GenericKey<8>, RID, GenericComparator<8>> tree("foo_pk", bpm, comparator, 5, 3);
   GenericKey<8> index_key;
 
   // create and fetch header_page
@@ -304,27 +322,47 @@ TEST(BPlusTreeConcurrentTest, DISABLED_MixTest) {
   auto header_page = bpm->NewPage(&page_id);
   (void)header_page;
   // first, populate index
-  std::vector<int64_t> keys = {1, 2, 3, 4, 5};
+  std::vector<int64_t> keys;
+  int64_t scale_factor = 500;
+  for (int64_t key = 1; key < scale_factor; key++) {
+    keys.push_back(key);
+  }
   InsertHelper(&tree, keys);
+
+  std::vector<int64_t> remove_keys;
+  std::vector<int64_t> remain_keys;
+
+  for (size_t key = 0; key < 1000; key++) {
+    if (static_cast<bool>(rand() % 2)) {
+      remove_keys.emplace_back(key);
+    } else {
+      remain_keys.emplace_back(key);
+    }
+  }
+  LOG_INFO("remain_keys.size() = %ld", remain_keys.size());
 
   // concurrent insert
   keys.clear();
-  for (int i = 6; i <= 10; i++) {
+  for (int i = 500; i < 1000; i++) {
     keys.push_back(i);
   }
   LaunchParallelTest(1, InsertHelper, &tree, keys);
   // concurrent delete
-  std::vector<int64_t> remove_keys = {1, 4, 3, 5, 6};
   LaunchParallelTest(1, DeleteHelper, &tree, remove_keys);
 
-  int64_t start_key = 2;
+  int64_t start_key = remain_keys[0];
+  int64_t i = 0;
   int64_t size = 0;
   index_key.SetFromInteger(start_key);
   for (auto iterator = tree.Begin(index_key); iterator != tree.End(); ++iterator) {
-    size = size + 1;
+    auto location = (*iterator).second;
+    EXPECT_EQ(location.GetPageId(), 0);
+    EXPECT_EQ(location.GetSlotNum(), remain_keys[i]);
+    i++;
+    size++;
   }
 
-  EXPECT_EQ(size, 5);
+  EXPECT_EQ(size, remain_keys.size());
 
   bpm->UnpinPage(HEADER_PAGE_ID, true);
   delete disk_manager;

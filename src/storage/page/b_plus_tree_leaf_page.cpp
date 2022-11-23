@@ -130,7 +130,7 @@ INDEX_TEMPLATE_ARGUMENTS
 void B_PLUS_TREE_LEAF_PAGE_TYPE::StealFrom(BPlusTreeLeafPage *brother_page_ptr, bool &is_left) {
   if (is_left) {
     auto stolen_item = brother_page_ptr->array_[brother_page_ptr->GetSize() - 1];
-    IncreaseSize(-1);
+    brother_page_ptr->IncreaseSize(-1);
     int i = GetSize();
     while (i > 0) {
       array_[i] = array_[i - 1];
@@ -141,7 +141,7 @@ void B_PLUS_TREE_LEAF_PAGE_TYPE::StealFrom(BPlusTreeLeafPage *brother_page_ptr, 
   } else {
     // right
     auto stolen_item = brother_page_ptr->array_[0];
-    IncreaseSize(-1);
+    brother_page_ptr->IncreaseSize(-1);
     int sz = brother_page_ptr->GetSize();
     int i = 0;
     while (i < sz) {

@@ -42,7 +42,26 @@ class BPlusTree {
  public:
   explicit BPlusTree(std::string name, BufferPoolManager *buffer_pool_manager, const KeyComparator &comparator,
                      int leaf_max_size = LEAF_PAGE_SIZE, int internal_max_size = INTERNAL_PAGE_SIZE);
+  void FreeTransaction(Transaction *transaction, bool exclusive);
+  inline void LockRootPageId(bool exclusive) {
+    if (exclusive) {
+      rwlatch_.WLock();
+    } else {
+      rwlatch_.RLock();
+    }
+    is_root_latched = true;
+  }
 
+  inline void TryUnlockRootPageId(bool exclusive) {
+    if (is_root_latched) {
+      if (exclusive) {
+        rwlatch_.WUnlock();
+      } else {
+        rwlatch_.RUnlock();
+      }
+      is_root_latched = false;
+    }
+  }
   // Returns true if this B+ tree has no keys and values.
   auto IsEmpty() const -> bool;
 
@@ -60,7 +79,7 @@ class BPlusTree {
   void InsertIntoInternal(const page_id_t &parent_page_id, const KeyType &key, const page_id_t &value,
                           Transaction *transaction = nullptr);
 
-  void CheckParent(page_id_t internal_page_id);
+  void CheckParent(page_id_t internal_page_id, Transaction *transaction);
 
   // return the page id of the root node
   auto GetRootPageId() -> page_id_t;
@@ -97,7 +116,7 @@ class BPlusTree {
   KeyComparator comparator_;
   int leaf_max_size_;
   int internal_max_size_;
-
+  static thread_local bool is_root_latched;
   ReaderWriterLatch rwlatch_;
 };
 
