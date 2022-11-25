@@ -168,7 +168,7 @@ TEST(BPlusTreeConcurrentTest, InsertTest2) {
   (void)header_page;
   // keys to Insert
   std::vector<int64_t> keys;
-  int64_t scale_factor = 100;
+  int64_t scale_factor = 1000;
   for (int64_t key = 1; key < scale_factor; key++) {
     keys.push_back(key);
   }
@@ -221,7 +221,7 @@ TEST(BPlusTreeConcurrentTest, DeleteTest1) {
   (void)header_page;
   // sequential insert
   std::vector<int64_t> keys;
-  int64_t scale_factor = 200;
+  int64_t scale_factor = 2000;
   for (int64_t key = 1; key < scale_factor; key++) {
     keys.push_back(key);
   }
@@ -323,7 +323,7 @@ TEST(BPlusTreeConcurrentTest, MixTest) {
   (void)header_page;
   // first, populate index
   std::vector<int64_t> keys;
-  int64_t scale_factor = 500;
+  int64_t scale_factor = 1000;
   for (int64_t key = 1; key < scale_factor; key++) {
     keys.push_back(key);
   }

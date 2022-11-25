@@ -75,11 +75,7 @@ auto B_PLUS_TREE_LEAF_PAGE_TYPE::SetValueAt(int index, const ValueType &value) -
 INDEX_TEMPLATE_ARGUMENTS
 auto B_PLUS_TREE_LEAF_PAGE_TYPE::Insert(const KeyType &key, const ValueType &value, KeyComparator &comparator) -> bool {
   int sz = GetSize();
-  // find the right position
-  int index = 0;
-  while (index < sz && comparator(KeyAt(index), key) < 0) {
-    index++;
-  }
+  int index = LookUp(key, comparator);
   // duplicate key not allowed
   if (index != sz && comparator(KeyAt(index), key) == 0) {
     return false;
@@ -110,19 +106,34 @@ auto B_PLUS_TREE_LEAF_PAGE_TYPE::SplitInto(BPlusTreeLeafPage *new_leaf_page_ptr)
   SetNextPageId(new_leaf_page_ptr->GetPageId());
   return new_leaf_page_ptr->KeyAt(0);
 }
+INDEX_TEMPLATE_ARGUMENTS
 
+auto B_PLUS_TREE_LEAF_PAGE_TYPE::LookUp(const KeyType &key, const KeyComparator &comparator) -> int {
+  int left = 0;
+  int right = GetSize();
+  while (left < right) {
+    int mid = left + (right - left) / 2;
+    if (comparator(key, KeyAt(mid)) == 0) {
+      return mid;
+    }
+    if (comparator(key, KeyAt(mid)) > 0) {
+      left = mid + 1;
+    } else {
+      right = mid;
+    }
+  }
+  return left;
+}
 INDEX_TEMPLATE_ARGUMENTS
 auto B_PLUS_TREE_LEAF_PAGE_TYPE::Remove(const KeyType &key, const KeyComparator &comparator) -> bool {
   int sz = GetSize();
-  for (int i = 0; i < sz; i++) {
-    if (comparator(key, KeyAt(i)) == 0) {
-      // delete this key;
-      for (int j = i; j < sz - 1; j++) {
-        array_[j] = array_[j + 1];
-      }
-      IncreaseSize(-1);
-      return true;
+  int index = LookUp(key, comparator);
+  if (index >= 0 && index < GetSize() && comparator(key, KeyAt(index)) == 0) {
+    for (int j = index; j < sz - 1; j++) {
+      array_[j] = array_[j + 1];
     }
+    IncreaseSize(-1);
+    return true;
   }
   return false;
 }

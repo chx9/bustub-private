@@ -42,6 +42,7 @@ class BPlusTree {
  public:
   explicit BPlusTree(std::string name, BufferPoolManager *buffer_pool_manager, const KeyComparator &comparator,
                      int leaf_max_size = LEAF_PAGE_SIZE, int internal_max_size = INTERNAL_PAGE_SIZE);
+  auto FindLeafPage(const KeyType &key, const OperationType &op, Transaction *transaction) -> LeafPage *;
   void FreeTransaction(Transaction *transaction, bool exclusive);
   inline void LockRootPageId(bool exclusive) {
     if (exclusive) {

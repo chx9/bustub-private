@@ -27,6 +27,7 @@ INDEX_TEMPLATE_ARGUMENTS
 class BPlusTreeInternalPage : public BPlusTreePage {
  public:
   // must call initialize method after "create" a new node
+  auto LookUp(const KeyType &key, const KeyComparator &comparator) -> ValueType;
   void Init(page_id_t page_id, page_id_t parent_id = INVALID_PAGE_ID, int max_size = INTERNAL_PAGE_SIZE);
 
   auto KeyAt(int index) const -> KeyType;
@@ -43,6 +44,7 @@ class BPlusTreeInternalPage : public BPlusTreePage {
   void StealFromRight(BPlusTreeInternalPage *brother_page_ptr, BPlusTreeInternalPage *parent_page_ptr, int index,
                       BufferPoolManager *buffer_pool_manager_);
   void ConcatWith(BPlusTreeInternalPage *brother_page_ptr, const KeyType &key, BufferPoolManager *buffer_pool_manager);
+  auto IsSafe(OperationType op) -> bool;
 
  private:
   // Flexible array member for page data.

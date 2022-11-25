@@ -58,6 +58,7 @@ class BPlusTreeLeafPage : public BPlusTreePage {
   auto Remove(const KeyType &key, const KeyComparator &comparator) -> bool;
   void StealFrom(BPlusTreeLeafPage *brother_page_ptr, bool &is_left);
   void ConcatWith(BPlusTreeLeafPage *leaf_page_ptr);
+  auto LookUp(const KeyType &key, const KeyComparator &comparator) -> int;
 
  private:
   page_id_t next_page_id_;

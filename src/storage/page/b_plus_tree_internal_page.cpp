@@ -14,6 +14,8 @@
 
 #include "common/exception.h"
 #include "storage/page/b_plus_tree_internal_page.h"
+#include "storage/page/b_plus_tree_page.h"
+#include "type/value.h"
 
 namespace bustub {
 /*****************************************************************************
@@ -36,6 +38,23 @@ void B_PLUS_TREE_INTERNAL_PAGE_TYPE::Init(page_id_t page_id, page_id_t parent_id
  * Helper method to get/set the key associated with input "index"(a.k.a
  * array offset)
  */
+INDEX_TEMPLATE_ARGUMENTS
+auto B_PLUS_TREE_INTERNAL_PAGE_TYPE::LookUp(const KeyType &key, const KeyComparator &comparator) -> ValueType {
+  int left;
+  int right;
+  int mid;
+  left = 1;
+  right = GetSize() + 1;
+  while (left < right) {
+    mid = left + (right - left) / 2;
+    if (comparator(KeyAt(mid), key) <= 0) {
+      left = mid + 1;
+    } else if (comparator(KeyAt(mid), key) > 0) {
+      right = mid;
+    }
+  }
+  return ValueAt(left - 1);
+}
 INDEX_TEMPLATE_ARGUMENTS
 auto B_PLUS_TREE_INTERNAL_PAGE_TYPE::KeyAt(int index) const -> KeyType { return array_[index].first; }
 
@@ -97,13 +116,13 @@ auto B_PLUS_TREE_INTERNAL_PAGE_TYPE::GetAdjacentBrother(const KeyType &key, bool
     i--;
   }
 
-  // 即当前节点是通过valueAt(0)指向的，所以没有左边的兄弟，只有右边的兄弟
+  // no left brother, only right;
   if (i == 0) {
     is_left = false;
     return {i + 1, ValueAt(i + 1)};
   }
 
-  // 那就是有左边节点，优先那左边节点，事实上，这里要返回一个key，如果brother在左边
+  // left first;
   is_left = true;
   return {i, ValueAt(i - 1)};
 }
@@ -183,6 +202,17 @@ void B_PLUS_TREE_INTERNAL_PAGE_TYPE::ConcatWith(BPlusTreeInternalPage *brother_p
   brother_page_ptr->SetSize(0);
 }
 
+INDEX_TEMPLATE_ARGUMENTS
+auto B_PLUS_TREE_INTERNAL_PAGE_TYPE::IsSafe(OperationType op) -> bool {
+  if (op == OperationType::INSERT) {
+    return GetSize() < GetMaxSize() - 1;
+  }
+  if (op == OperationType::REMOVE) {
+    return GetSize() - 1 >= GetMinSize();
+  }
+  // FIND
+  return true;
+}
 // valuetype for internalNode should be page id_t
 template class BPlusTreeInternalPage<GenericKey<4>, page_id_t, GenericComparator<4>>;
 template class BPlusTreeInternalPage<GenericKey<8>, page_id_t, GenericComparator<8>>;
