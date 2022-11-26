@@ -26,7 +26,7 @@ auto BPLUSTREE_TYPE::FindLeafPage(const KeyType &key, const OperationType &op, T
   bool exclusive = (op != OperationType::FIND);
   LockRootPageId(exclusive);
   if (IsEmpty()) {
-    TryUnlockRootPageId(exclusive);
+    UnlockRootPageId(exclusive);
     return nullptr;
   }
 
@@ -61,7 +61,7 @@ auto BPLUSTREE_TYPE::FindLeafPage(const KeyType &key, const OperationType &op, T
 }
 INDEX_TEMPLATE_ARGUMENTS
 void BPLUSTREE_TYPE::FreeTransaction(Transaction *transaction, bool exclusive) {
-  TryUnlockRootPageId(exclusive);
+  UnlockRootPageId(exclusive);
   auto page_set = transaction->GetPageSet();
   while (!page_set->empty()) {
     auto release_page_ptr = page_set->front();
@@ -91,14 +91,14 @@ INDEX_TEMPLATE_ARGUMENTS
 auto BPLUSTREE_TYPE::GetValue(const KeyType &key, std::vector<ValueType> *result, Transaction *transaction) -> bool {
   LockRootPageId(false);
   if (IsEmpty()) {
-    TryUnlockRootPageId(false);
+    UnlockRootPageId(false);
     return false;
   }
-  TryUnlockRootPageId(false);
+  UnlockRootPageId(false);
   page_id_t page_id = root_page_id_;
   Page *page_ptr = buffer_pool_manager_->FetchPage(page_id);
   page_ptr->RLatch();
-  TryUnlockRootPageId(false);
+  UnlockRootPageId(false);
   auto internal_page_ptr = reinterpret_cast<InternalPage *>(page_ptr->GetData());
 
   while (!internal_page_ptr->IsLeafPage()) {
@@ -174,7 +174,7 @@ auto BPLUSTREE_TYPE::Insert(const KeyType &key, const ValueType &value, Transact
     root_page_ptr->Init(root_page_id_, INVALID_PAGE_ID, leaf_max_size_);
     root_page_ptr->Insert(key, value, comparator_);
     buffer_pool_manager_->UnpinPage(root_page_id_, true);
-    TryUnlockRootPageId(true);
+    UnlockRootPageId(true);
     return true;
   }
   if (!leaf_page_ptr->Insert(key, value, comparator_)) {

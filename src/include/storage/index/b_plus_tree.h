@@ -53,7 +53,7 @@ class BPlusTree {
     is_root_latched = true;
   }
 
-  inline void TryUnlockRootPageId(bool exclusive) {
+  inline void UnlockRootPageId(bool exclusive) {
     if (is_root_latched) {
       if (exclusive) {
         rwlatch_.WUnlock();
