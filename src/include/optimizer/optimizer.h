@@ -12,6 +12,8 @@
 #include "execution/expressions/abstract_expression.h"
 #include "execution/plans/abstract_plan.h"
 
+#define BUSTUB_OPTIMIZER_HACK_REMOVE_AFTER_2022_FALL
+
 namespace bustub {
 
 /**
@@ -54,6 +56,16 @@ class Optimizer {
   auto OptimizeNLJAsIndexJoin(const AbstractPlanNodeRef &plan) -> AbstractPlanNodeRef;
 
   /**
+   * @brief eliminate always true filter
+   */
+  auto OptimizeEliminateTrueFilter(const AbstractPlanNodeRef &plan) -> AbstractPlanNodeRef;
+
+  /**
+   * @brief merge filter into filter_predicate of seq scan plan node
+   */
+  auto OptimizeMergeFilterScan(const AbstractPlanNodeRef &plan) -> AbstractPlanNodeRef;
+
+  /**
    * @brief rewrite expression to be used in nested loop joins. e.g., if we have `SELECT * FROM a, b WHERE a.x = b.y`,
    * we will have `#0.x = #0.y` in the filter plan node. We will need to figure out where does `0.x` and `0.y` belong
    * in NLJ (left table or right table?), and rewrite it as `#0.x = #1.y`.
@@ -81,6 +93,15 @@ class Optimizer {
    * @brief optimize sort + limit as top N
    */
   auto OptimizeSortLimitAsTopN(const AbstractPlanNodeRef &plan) -> AbstractPlanNodeRef;
+
+  /**
+   * @brief get the estimated cardinality for a table based on the table name. Useful when join reordering. BusTub
+   * doesn't support statistics for now, so it's the only way for you to get the table size :(
+   *
+   * @param table_name
+   * @return std::optional<size_t>
+   */
+  auto EstimatedCardinality(const std::string &table_name) -> std::optional<size_t>;
 
   /** Catalog will be used during the planning process. USERS SHOULD ENSURE IT OUTLIVES
    * OPTIMIZER, otherwise it's a dangling reference.
