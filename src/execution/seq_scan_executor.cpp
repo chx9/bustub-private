@@ -41,12 +41,12 @@ auto SeqScanExecutor::Next(Tuple *tuple, RID *rid) -> bool {
 
   values.reserve(GetOutputSchema().GetColumnCount());
   for (size_t i = 0; i < values.capacity(); i++) {
-    values.push_back(row_tuple.GetValue(&table_schema, i));
+    values.emplace_back(row_tuple.GetValue(&table_schema, i));
   }
   ++(*table_iterator_);
 
   *tuple = Tuple(values, &output_schema);
-  *rid = tuple->GetRid();
+  *rid = row_tuple.GetRid();
   return true;
 }
 

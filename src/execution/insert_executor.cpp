@@ -26,11 +26,10 @@ void InsertExecutor::Init() {
  table_info_ = GetExecutorContext()->GetCatalog()->GetTable(plan_->TableOid());
  index_infos_ = GetExecutorContext()->GetCatalog()->GetTableIndexes(table_info_->name_);
  child_executor_->Init();
- access_time_ = 0;
+ access_ = true;
 }
 
 auto InsertExecutor::Next(Tuple *tuple, RID *rid) -> bool {
- access_time_++;
  Tuple child_tuple{};
  int i = 0;
  while (child_executor_->Next(&child_tuple, rid)) {
@@ -43,7 +42,8 @@ auto InsertExecutor::Next(Tuple *tuple, RID *rid) -> bool {
   i++;
  }
 
- if (access_time_ == 1) {
+ if (access_) {
+  access_ = false;
   std::vector<Value> values{};
   values.reserve(GetOutputSchema().GetColumnCount());
   values.emplace_back(INTEGER, i);

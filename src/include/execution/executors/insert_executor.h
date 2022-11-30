@@ -60,7 +60,7 @@ class InsertExecutor : public AbstractExecutor {
   std::unique_ptr<AbstractExecutor> child_executor_;
   TableInfo *table_info_;
   std::vector<IndexInfo *> index_infos_;
-  int access_time_ ;
+  bool access_ ;
 };
 
 }  // namespace bustub
