@@ -409,6 +409,11 @@ void BPLUSTREE_TYPE::CheckParent(page_id_t internal_page_id, Transaction *transa
  */
 INDEX_TEMPLATE_ARGUMENTS
 auto BPLUSTREE_TYPE::Begin() -> INDEXITERATOR_TYPE {
+  rwlatch_.RLock();
+  if (IsEmpty()) {
+    rwlatch_.RUnlock();
+    return End();
+  }
   page_id_t page_id = root_page_id_;
   Page *page_ptr = buffer_pool_manager_->FetchPage(page_id);
   auto internal_page_ptr = reinterpret_cast<InternalPage *>(page_ptr->GetData());
@@ -422,7 +427,7 @@ auto BPLUSTREE_TYPE::Begin() -> INDEXITERATOR_TYPE {
   }
   page_id = internal_page_ptr->GetPageId();
   buffer_pool_manager_->UnpinPage(page_id, false);
-
+  rwlatch_.RUnlock();
   return INDEXITERATOR_TYPE(page_id, 0, buffer_pool_manager_);
 }
 
@@ -433,6 +438,11 @@ auto BPLUSTREE_TYPE::Begin() -> INDEXITERATOR_TYPE {
  */
 INDEX_TEMPLATE_ARGUMENTS
 auto BPLUSTREE_TYPE::Begin(const KeyType &key) -> INDEXITERATOR_TYPE {
+  rwlatch_.RLock();
+  if (IsEmpty()) {
+    rwlatch_.RUnlock();
+    return End();
+  }
   LeafPage *leaf_page_ptr = FindLeaf(key);
   int sz = leaf_page_ptr->GetSize();
   int i;
@@ -443,7 +453,7 @@ auto BPLUSTREE_TYPE::Begin(const KeyType &key) -> INDEXITERATOR_TYPE {
   }
   page_id_t page_id = leaf_page_ptr->GetPageId();
   buffer_pool_manager_->UnpinPage(page_id, false);
-
+  rwlatch_.RUnlock();
   return INDEXITERATOR_TYPE(page_id, i, buffer_pool_manager_);
 }
 

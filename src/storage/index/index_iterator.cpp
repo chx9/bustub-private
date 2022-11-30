@@ -29,7 +29,7 @@ INDEXITERATOR_TYPE::~IndexIterator() {
 
 INDEX_TEMPLATE_ARGUMENTS
 auto INDEXITERATOR_TYPE::IsEnd() const -> bool {
-  return leaf_page_ptr_->GetNextPageId() == INVALID_PAGE_ID && index_ == leaf_page_ptr_->GetSize();
+   return page_id_ == INVALID_PAGE_ID && index_ == 0; 
 }
 
 INDEX_TEMPLATE_ARGUMENTS auto INDEXITERATOR_TYPE::operator*() -> const MappingType & {
@@ -39,11 +39,15 @@ INDEX_TEMPLATE_ARGUMENTS auto INDEXITERATOR_TYPE::operator*() -> const MappingTy
 INDEX_TEMPLATE_ARGUMENTS
 auto INDEXITERATOR_TYPE::operator++() -> INDEXITERATOR_TYPE & {
   index_++;
-  if (index_ == leaf_page_ptr_->GetSize() && leaf_page_ptr_->GetNextPageId() != INVALID_PAGE_ID) {
+  if (index_ == leaf_page_ptr_->GetSize()) {
     page_id_ = leaf_page_ptr_->GetNextPageId();
     buffer_pool_manager_->UnpinPage(leaf_page_ptr_->GetPageId(), false);
-    Page *leaf_page = buffer_pool_manager_->FetchPage(page_id_);
-    leaf_page_ptr_ = reinterpret_cast<B_PLUS_TREE_LEAF_PAGE_TYPE *>(leaf_page->GetData());
+    if (page_id_ != INVALID_PAGE_ID) {
+      Page *leaf_page = buffer_pool_manager_->FetchPage(page_id_);
+      leaf_page_ptr_ = reinterpret_cast<B_PLUS_TREE_LEAF_PAGE_TYPE *>(leaf_page->GetData());
+    } else {
+      leaf_page_ptr_ = nullptr;
+    }
     index_ = 0;
   }
   return *this;
