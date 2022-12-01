@@ -28,9 +28,7 @@ INDEXITERATOR_TYPE::~IndexIterator() {
 }  // NOLINT
 
 INDEX_TEMPLATE_ARGUMENTS
-auto INDEXITERATOR_TYPE::IsEnd() const -> bool {
-   return page_id_ == INVALID_PAGE_ID && index_ == 0; 
-}
+auto INDEXITERATOR_TYPE::IsEnd() const -> bool { return page_id_ == INVALID_PAGE_ID && index_ == 0; }
 
 INDEX_TEMPLATE_ARGUMENTS auto INDEXITERATOR_TYPE::operator*() -> const MappingType & {
   return leaf_page_ptr_->PairAt(index_);

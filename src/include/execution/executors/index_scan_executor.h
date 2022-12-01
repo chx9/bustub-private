@@ -14,6 +14,7 @@
 
 #include <vector>
 
+#include <memory>
 #include "catalog/catalog.h"
 #include "common/rid.h"
 #include "execution/executor_context.h"
@@ -49,9 +50,8 @@ class IndexScanExecutor : public AbstractExecutor {
   const IndexScanPlanNode *plan_;
 
   BPlusTreeIndexForOneIntegerColumn *tree_;
-  TableInfo* table_info_;
-  IndexInfo* index_info_;
+  TableInfo *table_info_;
+  IndexInfo *index_info_;
   std::unique_ptr<BPlusTreeIndexIteratorForOneIntegerColumn> index_iterator_;
-  
 };
 }  // namespace bustub
