@@ -11,11 +11,13 @@
 //===----------------------------------------------------------------------===//
 
 #include <cassert>
+#include <cstddef>
 #include <cstdlib>
 #include <sstream>
 #include <string>
 #include <vector>
 
+#include "common/logger.h"
 #include "storage/table/tuple.h"
 
 namespace bustub {
@@ -97,7 +99,11 @@ auto Tuple::operator=(const Tuple &other) -> Tuple & {
 
 auto Tuple::GetValue(const Schema *schema, const uint32_t column_idx) const -> Value {
   assert(schema);
+  if (data_ == nullptr) {
+    LOG_ERROR("%d", column_idx);
+  }
   assert(data_);
+
   const TypeId column_type = schema->GetColumn(column_idx).GetType();
   const char *data_ptr = GetDataPtr(schema, column_idx);
   // the third parameter "is_inlined" is unused

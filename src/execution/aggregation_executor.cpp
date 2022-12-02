@@ -13,6 +13,7 @@
 #include <memory>
 #include <vector>
 
+#include "common/logger.h"
 #include "execution/executors/aggregation_executor.h"
 
 namespace bustub {
@@ -26,6 +27,7 @@ AggregationExecutor::AggregationExecutor(ExecutorContext *exec_ctx, const Aggreg
       aht_iterator_(aht_.Begin()) {}
 
 void AggregationExecutor::Init() {
+  aht_.Clear();
   child_->Init();
   Tuple raw_tuple;
   RID rid;

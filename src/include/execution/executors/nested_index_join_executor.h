@@ -12,12 +12,14 @@
 
 #pragma once
 
+#include <cstddef>
 #include <memory>
 #include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
+#include "catalog/catalog.h"
 #include "execution/executor_context.h"
 #include "execution/executors/abstract_executor.h"
 #include "execution/expressions/abstract_expression.h"
@@ -50,5 +52,12 @@ class NestIndexJoinExecutor : public AbstractExecutor {
  private:
   /** The nested index join plan node. */
   const NestedIndexJoinPlanNode *plan_;
+  std::unique_ptr<AbstractExecutor> child_executor_;
+  std::vector<Tuple> results_;
+  size_t index_ = 0;
+  TableInfo *inner_table_info_;
+  IndexInfo *inner_index_info_;
+  std::unique_ptr<BPlusTreeIndexIteratorForOneIntegerColumn> index_iterator_;
+  BPlusTreeIndexForOneIntegerColumn *tree_;
 };
 }  // namespace bustub
