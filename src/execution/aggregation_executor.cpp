@@ -27,17 +27,21 @@ AggregationExecutor::AggregationExecutor(ExecutorContext *exec_ctx, const Aggreg
       aht_iterator_(aht_.Begin()) {}
 
 void AggregationExecutor::Init() {
-  aht_.Clear();
-  child_->Init();
-  Tuple raw_tuple;
-  RID rid;
-  int insert_cnt = 0;
-  while (child_->Next(&raw_tuple, &rid)) {
-    aht_.InsertCombine(MakeAggregateKey(&raw_tuple), MakeAggregateValue(&raw_tuple));
-    insert_cnt++;
-  }
-  if (insert_cnt == 0 && plan_->GetGroupBys().empty()) {
-    aht_.InitEmpty(MakeAggregateKey(&raw_tuple));
+  if (!is_inited_) {
+    child_->Init();
+    Tuple raw_tuple;
+    RID rid;
+    int insert_cnt = 0;
+    while (child_->Next(&raw_tuple, &rid)) {
+      aht_.InsertCombine(MakeAggregateKey(&raw_tuple), MakeAggregateValue(&raw_tuple));
+      insert_cnt++;
+    }
+    if (insert_cnt == 0 && plan_->GetGroupBys().empty()) {
+      aht_.InitEmpty(MakeAggregateKey(&raw_tuple));
+    }
+    aht_iterator_ = aht_.Begin();
+    is_inited_ = true;
+    return;
   }
   aht_iterator_ = aht_.Begin();
 }

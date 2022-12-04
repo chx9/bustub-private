@@ -30,57 +30,63 @@ NestedLoopJoinExecutor::NestedLoopJoinExecutor(ExecutorContext *exec_ctx, const 
       right_executor_(std::move(right_executor)) {}
 
 void NestedLoopJoinExecutor::Init() {
-  RID left_rid;
-  RID right_rid;
-  Tuple left_tuple;
-  Tuple right_tuple;
-  bool matched = false;
-  left_executor_->Init();
-  while (left_executor_->Next(&left_tuple, &left_rid)) {
-    matched = false;
-    right_executor_->Init();
-    while (right_executor_->Next(&right_tuple, &right_rid)) {
-      auto value = plan_->Predicate().EvaluateJoin(&left_tuple, left_executor_->GetOutputSchema(), &right_tuple,
-                                                   right_executor_->GetOutputSchema());
-      if (!value.IsNull() && value.GetAs<bool>()) {
-        matched = true;
+  if (!is_inited_) {
+    RID left_rid;
+    RID right_rid;
+    Tuple left_tuple;
+    Tuple right_tuple;
+    bool matched = false;
+    left_executor_->Init();
+    while (left_executor_->Next(&left_tuple, &left_rid)) {
+      matched = false;
+      right_executor_->Init();
+      while (right_executor_->Next(&right_tuple, &right_rid)) {
+        auto value = plan_->Predicate().EvaluateJoin(&left_tuple, left_executor_->GetOutputSchema(), &right_tuple,
+                                                     right_executor_->GetOutputSchema());
+        if (!value.IsNull() && value.GetAs<bool>()) {
+          matched = true;
+          std::vector<Value> values;
+          values.reserve(GetOutputSchema().GetColumnCount());
+          for (size_t i = 0; i < left_executor_->GetOutputSchema().GetColumnCount(); i++) {
+            values.emplace_back(left_tuple.GetValue(&left_executor_->GetOutputSchema(), i));
+          }
+          for (size_t i = 0; i < right_executor_->GetOutputSchema().GetColumnCount(); i++) {
+            values.emplace_back(right_tuple.GetValue(&right_executor_->GetOutputSchema(), i));
+          }
+          Tuple raw_tuple{values, &GetOutputSchema()};
+          tuples_.emplace_back(raw_tuple);
+        }
+      }
+      if (plan_->join_type_ == JoinType::LEFT && !matched) {
         std::vector<Value> values;
         values.reserve(GetOutputSchema().GetColumnCount());
         for (size_t i = 0; i < left_executor_->GetOutputSchema().GetColumnCount(); i++) {
           values.emplace_back(left_tuple.GetValue(&left_executor_->GetOutputSchema(), i));
         }
+
         for (size_t i = 0; i < right_executor_->GetOutputSchema().GetColumnCount(); i++) {
-          values.emplace_back(right_tuple.GetValue(&right_executor_->GetOutputSchema(), i));
+          values.emplace_back(
+              ValueFactory::GetNullValueByType(right_executor_->GetOutputSchema().GetColumn(i).GetType()));
         }
         Tuple raw_tuple{values, &GetOutputSchema()};
-        results_.emplace_back(raw_tuple);
+        tuples_.emplace_back(raw_tuple);
       }
     }
-    if (plan_->join_type_ == JoinType::LEFT && !matched) {
-      std::vector<Value> values;
-      values.reserve(GetOutputSchema().GetColumnCount());
-      for (size_t i = 0; i < left_executor_->GetOutputSchema().GetColumnCount(); i++) {
-        values.emplace_back(left_tuple.GetValue(&left_executor_->GetOutputSchema(), i));
-      }
-
-      for (size_t i = 0; i < right_executor_->GetOutputSchema().GetColumnCount(); i++) {
-        values.emplace_back(
-            ValueFactory::GetNullValueByType(right_executor_->GetOutputSchema().GetColumn(i).GetType()));
-      }
-      Tuple raw_tuple{values, &GetOutputSchema()};
-      results_.emplace_back(raw_tuple);
-    }
+    it_ = tuples_.begin();
+    is_inited_ = true;
+    return;
   }
+  it_ = tuples_.begin();
 }
 
 auto NestedLoopJoinExecutor::Next(Tuple *tuple, RID *rid) -> bool {
-  if (index_ < results_.size()) {
-    *tuple = results_[index_];
-    index_++;
-
-    return true;
+  if (it_ == tuples_.end()) {
+    return false;
   }
-  return false;
+  *tuple = *it_;
+  it_++;
+
+  return true;
 }
 
 }  // namespace bustub

@@ -241,5 +241,6 @@ class AggregationExecutor : public AbstractExecutor {
   /** Simple aggregation hash table iterator */
   SimpleAggregationHashTable::Iterator aht_iterator_;
   RID rid_;
+  bool is_inited_ = false;
 };
 }  // namespace bustub

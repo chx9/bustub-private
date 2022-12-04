@@ -59,10 +59,11 @@ class NestedLoopJoinExecutor : public AbstractExecutor {
   std::unique_ptr<AbstractExecutor> left_executor_;
   std::unique_ptr<AbstractExecutor> right_executor_;
 
-  std::vector<Tuple> results_;
-  size_t index_ = 0;
+  std::vector<Tuple> tuples_;
+  std::vector<Tuple>::iterator it_;
   RID left_rid_;
   RID right_rid_;
+  bool is_inited_ = false;
 };
 
 }  // namespace bustub
