@@ -64,7 +64,7 @@ class LockManager {
   class LockRequestQueue {
    public:
     /** List of lock requests for the same resource (table or row) */
-    std::list<LockRequest *> request_queue_;
+    std::list<std::shared_ptr<LockRequest>> request_queue_;
     /** For notifying blocked transactions on this rid */
     std::condition_variable cv_;
     /** txn_id of an upgrading transaction (if any) */
@@ -87,6 +87,29 @@ class LockManager {
     delete cycle_detection_thread_;
   }
 
+  auto UpgradeValid(LockMode from, LockMode to) -> bool {
+    switch (from) {
+      case LockMode::INTENTION_SHARED:  //  IS -> [S, X, IX, SIX]
+        return to != LockMode::INTENTION_SHARED;
+      case LockMode::SHARED:               //  S -> [X, SIX]
+      case LockMode::INTENTION_EXCLUSIVE:  //  IX -> [X, SIX]
+        return to == LockMode::EXCLUSIVE || to == LockMode::SHARED_INTENTION_EXCLUSIVE;
+      case LockMode::SHARED_INTENTION_EXCLUSIVE:  //  SIX -> [X]
+        return to == LockMode::EXCLUSIVE;
+      default:
+        return false;
+    }
+  }
+  // auto IsTableLockCompatible(LockMode &holds, LockMode &wants) -> bool {
+  //   switch (holds) {
+  //     case LockMode::INTENTION_SHARED:  //  IS -> [S, X, IX, SIX]
+  //     case LockMode::SHARED:               //  S -> [X, SIX]
+  //     case LockMode::INTENTION_EXCLUSIVE:  //  IX -> [X, SIX]
+  //     case LockMode::SHARED_INTENTION_EXCLUSIVE:  //  SIX -> [X]
+
+  //   }
+  //   return true;
+  // }
   /**
    * [LOCK_NOTE]
    *
