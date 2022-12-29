@@ -13,6 +13,8 @@
 #include <memory>
 
 #include "common/logger.h"
+#include "concurrency/lock_manager.h"
+#include "concurrency/transaction.h"
 #include "execution/executors/insert_executor.h"
 #include "type/type.h"
 
@@ -27,11 +29,34 @@ void InsertExecutor::Init() {
   index_infos_ = GetExecutorContext()->GetCatalog()->GetTableIndexes(table_info_->name_);
   child_executor_->Init();
   access_ = true;
+  auto txn = GetExecutorContext()->GetTransaction();
+  auto lock_mgr = GetExecutorContext()->GetLockManager();
+  LOG_DEBUG("iso level:%s", LockManager::GetIsolationLevelString(txn->GetIsolationLevel()));
+  try {
+    bool success = lock_mgr->LockTable(txn, LockManager::LockMode::EXCLUSIVE, table_info_->oid_);
+    if (!success) {
+      txn->SetState(TransactionState::ABORTED);
+      throw ExecutionException("lock failed");
+    }
+  } catch (TransactionAbortException e) {
+    switch (e.GetAbortReason()) {
+      case AbortReason::LOCK_ON_SHRINKING:
+      case AbortReason::UPGRADE_CONFLICT:
+      case AbortReason::LOCK_SHARED_ON_READ_UNCOMMITTED:
+      case AbortReason::TABLE_LOCK_NOT_PRESENT:
+      case AbortReason::ATTEMPTED_INTENTION_LOCK_ON_ROW:
+      case AbortReason::TABLE_UNLOCKED_BEFORE_UNLOCKING_ROWS:
+      case AbortReason::INCOMPATIBLE_UPGRADE:
+      case AbortReason::ATTEMPTED_UNLOCK_BUT_NO_LOCK_HELD:
+        break;
+    }
+  }
 }
 
 auto InsertExecutor::Next(Tuple *tuple, RID *rid) -> bool {
   Tuple child_tuple{};
   int i = 0;
+
   while (child_executor_->Next(&child_tuple, rid)) {
     table_info_->table_->InsertTuple(child_tuple, rid, GetExecutorContext()->GetTransaction());
     for (auto &index_info : index_infos_) {

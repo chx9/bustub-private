@@ -14,15 +14,21 @@
 
 #include <algorithm>
 #include <condition_variable>  // NOLINT
+#include <functional>
+#include <iostream>
 #include <list>
 #include <memory>
 #include <mutex>  // NOLINT
+#include <ostream>
+#include <set>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
 
 #include "common/config.h"
+#include "common/logger.h"
 #include "common/rid.h"
 #include "concurrency/transaction.h"
 
@@ -87,7 +93,7 @@ class LockManager {
     delete cycle_detection_thread_;
   }
 
-  auto UpgradeValid(LockMode from, LockMode to) -> bool {
+  auto IsUpgradeValid(LockMode from, LockMode to) -> bool {
     switch (from) {
       case LockMode::INTENTION_SHARED:  //  IS -> [S, X, IX, SIX]
         return to != LockMode::INTENTION_SHARED;
@@ -100,16 +106,61 @@ class LockManager {
         return false;
     }
   }
-  // auto IsTableLockCompatible(LockMode &holds, LockMode &wants) -> bool {
-  //   switch (holds) {
-  //     case LockMode::INTENTION_SHARED:  //  IS -> [S, X, IX, SIX]
-  //     case LockMode::SHARED:               //  S -> [X, SIX]
-  //     case LockMode::INTENTION_EXCLUSIVE:  //  IX -> [X, SIX]
-  //     case LockMode::SHARED_INTENTION_EXCLUSIVE:  //  SIX -> [X]
-
-  //   }
-  //   return true;
-  // }
+  static auto GetIsolationLevelString(IsolationLevel iso) {
+    switch (iso) {
+      case IsolationLevel::READ_UNCOMMITTED:
+        return "read uncommitted";
+      case IsolationLevel::REPEATABLE_READ:
+        return "repeatable read";
+      case IsolationLevel::READ_COMMITTED:
+        return "read comitted";
+        break;
+    }
+  }
+  auto GetLockModeString(LockMode &lock_mode) {
+    switch (lock_mode) {
+      case LockMode::SHARED:
+        return "s";
+        break;
+      case LockMode::EXCLUSIVE:
+        return "x";
+        break;
+      case LockMode::INTENTION_SHARED:
+        return "is";
+        break;
+      case LockMode::INTENTION_EXCLUSIVE:
+        return "ix";
+        break;
+      case LockMode::SHARED_INTENTION_EXCLUSIVE:
+        return "six";
+        break;
+    }
+  }
+  auto IsLockCompatible(LockMode &holds, LockMode &wants) -> bool {
+    auto s = LockMode::SHARED;
+    //     auto x = LockMode::EXCLUSIVE;
+    auto is = LockMode::INTENTION_SHARED;
+    auto ix = LockMode::INTENTION_EXCLUSIVE;
+    auto six = LockMode::SHARED_INTENTION_EXCLUSIVE;
+    switch (holds) {
+      case LockMode::SHARED:
+        return wants == is || wants == s;
+        break;
+      case LockMode::EXCLUSIVE:
+        return false;
+        break;
+      case LockMode::INTENTION_SHARED:
+        return wants == is || wants == ix || wants == s || wants == six;
+        break;
+      case LockMode::INTENTION_EXCLUSIVE:
+        return wants == is || wants == ix;
+        break;
+      case LockMode::SHARED_INTENTION_EXCLUSIVE:
+        return wants == is;
+        break;
+    }
+    return false;
+  }
   /**
    * [LOCK_NOTE]
    *
@@ -318,7 +369,28 @@ class LockManager {
   /**
    * Runs cycle detection in the background.
    */
+  auto HasCycleUtil(txn_id_t &txn_id) -> bool;
   auto RunCycleDetection() -> void;
+  auto DrawGraph() -> void;
+  auto SprintfLockMode(LockMode lock_mode) {
+    switch (lock_mode) {
+      case LockMode::SHARED:
+        return "s";
+        break;
+      case LockMode::EXCLUSIVE:
+        return "x";
+        break;
+      case LockMode::INTENTION_SHARED:
+        return "is";
+        break;
+      case LockMode::INTENTION_EXCLUSIVE:
+        return "ix";
+        break;
+      case LockMode::SHARED_INTENTION_EXCLUSIVE:
+        return "six";
+        break;
+    }
+  }
 
  private:
   /** Fall 2022 */
@@ -337,6 +409,11 @@ class LockManager {
   /** Waits-for graph representation. */
   std::unordered_map<txn_id_t, std::vector<txn_id_t>> waits_for_;
   std::mutex waits_for_latch_;
+
+  std::unordered_map<txn_id_t, bool> visit_;
+  std::unordered_map<txn_id_t, bool> recurv_stack_;
+  std::unordered_map<txn_id_t, std::vector<std::list<std::shared_ptr<LockRequest>>::iterator>> table_txn_request_;
+  std::unordered_map<txn_id_t, std::vector<std::list<std::shared_ptr<LockRequest>>::iterator>> row_txn_request_;
 };
 
 }  // namespace bustub
